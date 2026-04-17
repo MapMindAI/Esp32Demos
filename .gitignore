@@ -1,4 +1,3 @@
-build/LVGL_Arduino*
 build/*
 data
 build-cache
@@ -9,26 +8,11 @@ IDF_*/managed_components
 .MobiliMOKUKU_bash_history
 *.ipynb_checkpoints
 *.old
-IDF_MOKUKU_1
-IDF_MOKUKU_2
-IDF_MOKUKU/log
-IDF_MOKUKU/sdkconfig
-IDF_MOKUKU/MOKUKU_build_buffer.zip
-IDF_SHARED/assets/assets.zip
-IDF_SHARED/assets/mokuku/*
-!IDF_SHARED/assets/mokuku/meta
-!IDF_SHARED/assets/mokuku/dict
-IDF_SHARED/assets/minion
-IDF_SHARED/assets/muyu/meta
-IDF_SHARED/assets/muyu/video
-IDF_SHARED/assets/stereo_memes
-IDF_SHARED/assets_videos/mokuku_raw
-IDF_SHARED/assets_videos/mokuku_holiday_raw
 IDF_lcd_with_te
 log.txt
 *__pycache__*
 *.log
-
+*/dependencies.lock
 
 
 # **/sdkconfig
@@ -37,3 +21,4 @@ log.txt
 **/managed_components
 # **/dependencies.lock
 **/dist
+*_bash_history

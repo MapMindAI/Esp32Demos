@@ -1,0 +1,116 @@
+menu "Camera RTSP Configuration"
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_PORT
+        int "MIPI CSI SCCB I2C Port Number"
+        default 0
+        range 0 1
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_SCL_PIN
+        int "MIPI CSI SCCB I2C SCL Pin"
+        default 8
+        range -1 56
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_SDA_PIN
+        int "MIPI CSI SCCB I2C SDA Pin"
+        default 7
+        range -1 56
+
+    config EXAMPLE_MIPI_CSI_SCCB_I2C_FREQ
+        int "MIPI CSI SCCB I2C Frequency"
+        default 100000
+        range 100000 400000
+        help
+            Increasing this value can reduce the initialization time of the camera sensor.
+            Please refer to the relevant instructions of the camera sensor to adjust the value.
+
+    config EXAMPLE_MIPI_CSI_CAM_SENSOR_RESET_PIN
+        int "MIPI CSI Camera Sensor Reset Pin"
+        default -1
+        range -1 56
+
+    config EXAMPLE_MIPI_CSI_CAM_SENSOR_PWDN_PIN
+        int "MIPI CSI Camera Sensor Power Down Pin"
+        default -1
+        range -1 56
+
+    config EXAMPLE_H264_I_PERIOD
+            int "H.264 Intra Frame period"
+            default 30
+            range 1 120
+            help
+                H.264 I-Frame period.
+
+    config EXAMPLE_H264_BITRATE
+        int "H.264 Bitrate"
+        default 1000000
+        range 25000 2500000
+        help
+            H.264 bitrate.
+
+    config EXAMPLE_H264_MIN_QP
+        int "H.264 Minimum Quality"
+        default 25
+        range 1 51
+        help
+            H.264 minimum quality, the value should be less than H.264 maximum quality.
+
+    config EXAMPLE_H264_MAX_QP
+        int "H.264 Maximum Quality"
+        default 26
+        range 1 51
+        help
+            H.264 maximum quality, the value should be larger than H.264 minimum quality.
+
+    choice ESP_WIFI_SAE_MODE
+        prompt "WPA3 SAE mode selection"
+        default ESP_WPA3_SAE_PWE_BOTH
+        help
+            Select mode for SAE as Hunt and Peck, H2E or both.
+        config ESP_WPA3_SAE_PWE_HUNT_AND_PECK
+            bool "HUNT AND PECK"
+        config ESP_WPA3_SAE_PWE_HASH_TO_ELEMENT
+            bool "H2E"
+        config ESP_WPA3_SAE_PWE_BOTH
+            bool "BOTH"
+    endchoice
+
+    config ESP_WIFI_PW_ID
+        string "PASSWORD IDENTIFIER"
+        depends on  ESP_WPA3_SAE_PWE_HASH_TO_ELEMENT|| ESP_WPA3_SAE_PWE_BOTH
+        default ""
+        help
+            password identifier for SAE H2E
+
+    config ESP_MAXIMUM_RETRY
+        int "Maximum retry"
+        default 5
+        help
+            Set the Maximum retry to avoid station reconnecting to the AP unlimited when the AP is really inexistent.
+
+    choice ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD
+        prompt "WiFi Scan auth mode threshold"
+        default ESP_WIFI_AUTH_WPA2_PSK
+        help
+            The weakest authmode to accept in the scan mode.
+            This value defaults to ESP_WIFI_AUTH_WPA2_PSK incase password is present and ESP_WIFI_AUTH_OPEN is used.
+            Please select ESP_WIFI_AUTH_WEP/ESP_WIFI_AUTH_WPA_PSK incase AP is operating in WEP/WPA mode.
+
+        config ESP_WIFI_AUTH_OPEN
+            bool "OPEN"
+        config ESP_WIFI_AUTH_WEP
+            bool "WEP"
+        config ESP_WIFI_AUTH_WPA_PSK
+            bool "WPA PSK"
+        config ESP_WIFI_AUTH_WPA2_PSK
+            bool "WPA2 PSK"
+        config ESP_WIFI_AUTH_WPA_WPA2_PSK
+            bool "WPA/WPA2 PSK"
+        config ESP_WIFI_AUTH_WPA3_PSK
+            bool "WPA3 PSK"
+        config ESP_WIFI_AUTH_WPA2_WPA3_PSK
+            bool "WPA2/WPA3 PSK"
+        config ESP_WIFI_AUTH_WAPI_PSK
+            bool "WAPI PSK"
+    endchoice
+
+endmenu
