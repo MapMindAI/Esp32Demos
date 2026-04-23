@@ -9,11 +9,11 @@
 
 #pragma once
 
-#include "settings.h"
+#include "esp_capture_sink.h"
 #include "media_sys.h"
 #include "network.h"
+#include "settings.h"
 #include "sys_state.h"
-#include "esp_capture_sink.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +33,7 @@ void init_board(void);
  *      - 0       On success
  *      - Others  Fail to start
  */
-int start_webrtc(char *url);
+int start_webrtc(char* url);
 
 /**
  * @brief  Query WebRTC status
@@ -52,7 +52,7 @@ int stop_webrtc(void);
 /**
  * @brief  Send command to peer
  */
-void send_cmd(char *cmd);
+void send_cmd(char* cmd);
 
 /**
  * @brief  Close data channel according channel index
@@ -68,20 +68,19 @@ esp_capture_sink_handle_t get_detect_sink(void);
  * @brief  pedestrian detection configuration
  */
 typedef struct {
-   int                       (*detected)(esp_capture_rgn_t *rgn, void *ctx);
-   void                      *ctx;
+  int (*detected)(esp_capture_rgn_t* rgn, void* ctx);
+  void* ctx;
 } pedestrian_detect_cfg_t;
 
 /**
  * @brief  Start pedestrian detection
  */
-int start_pedestrian_detection(pedestrian_detect_cfg_t *cfg);
+int start_pedestrian_detection(pedestrian_detect_cfg_t* cfg);
 
 /**
  * @brief  Stop pedestrian detection
  */
 void stop_pedestrian_detection();
-
 
 #ifdef __cplusplus
 }

@@ -1,18 +1,16 @@
 
 
 #include "robot_canbus.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
 #include "driver/twai.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
 
 #define TAG "[CANBUS]"
 
 CanbusMessageHandler canbus_message_handler_ = NULL;
-void SetCanbusMessageHandler(CanbusMessageHandler fcn) {
-  canbus_message_handler_ = fcn;
-}
+void SetCanbusMessageHandler(CanbusMessageHandler fcn) { canbus_message_handler_ = fcn; }
 
 static void canbus_receive_task(void* param) {
   // 4. 创建接收任务
@@ -20,9 +18,8 @@ static void canbus_receive_task(void* param) {
   while (1) {
     if (twai_receive(&rx_msg, pdMS_TO_TICKS(1000)) == ESP_OK) {
       ESP_LOGI(TAG, "Received CAN ID: 0x%03X, DLC: %d, Data: %02X %02X %02X %02X %02X %02X %02X %02X",
-               rx_msg.identifier, rx_msg.data_length_code,
-               rx_msg.data[0], rx_msg.data[1], rx_msg.data[2], rx_msg.data[3],
-               rx_msg.data[4], rx_msg.data[5], rx_msg.data[6], rx_msg.data[7]);
+               rx_msg.identifier, rx_msg.data_length_code, rx_msg.data[0], rx_msg.data[1], rx_msg.data[2],
+               rx_msg.data[3], rx_msg.data[4], rx_msg.data[5], rx_msg.data[6], rx_msg.data[7]);
       if (rx_msg.identifier == CANBUS_MESSAGE_ID && canbus_message_handler_) {
         canbus_message_handler_(rx_msg.data_length_code, rx_msg.data);
       }
@@ -37,11 +34,7 @@ static void canbus_receive_task(void* param) {
 QueueHandle_t canbus_send_queue_;
 
 void AddMessageToSend(uint8_t message_type, uint32_t value) {
-  twai_message_t msg = {
-      .identifier = CANBUS_MESSAGE_ID,
-      .data_length_code = 5,
-      .flags = TWAI_MSG_FLAG_NONE
-  };
+  twai_message_t msg = {.identifier = CANBUS_MESSAGE_ID, .data_length_code = 5, .flags = TWAI_MSG_FLAG_NONE};
   msg.data[0] = message_type;
   memcpy(msg.data + 1, &value, 4);
   xQueueSend(canbus_send_queue_, &msg, pdMS_TO_TICKS(10));
@@ -55,11 +48,7 @@ static void canbus_send_task(void* param) {
   }
 
   twai_message_t tx_msg_beats = {
-      .identifier = CANBUS_MESSAGE_ID,
-      .data_length_code = 2,
-      .data = {0xAB, 0xCD},
-      .flags = TWAI_MSG_FLAG_NONE
-  };
+      .identifier = CANBUS_MESSAGE_ID, .data_length_code = 2, .data = {0xAB, 0xCD}, .flags = TWAI_MSG_FLAG_NONE};
 
   twai_message_t tx_msg;
   while (1) {
@@ -76,19 +65,19 @@ static void canbus_send_task(void* param) {
 void InitializeCanbus(gpio_num_t pin_rx, gpio_num_t pin_tx) {
   // 1. 配置 TWAI
   twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(pin_tx, pin_rx, TWAI_MODE_NORMAL);
-  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS(); // 500 kbps
+  twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();  // 500 kbps
   twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
   // 2. 安装驱动
   if (twai_driver_install(&g_config, &t_config, &f_config) != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to install TWAI driver");
-      return;
+    ESP_LOGE(TAG, "Failed to install TWAI driver");
+    return;
   }
 
   // 3. 启动驱动
   if (twai_start() != ESP_OK) {
-      ESP_LOGE(TAG, "Failed to start TWAI driver");
-      return;
+    ESP_LOGE(TAG, "Failed to start TWAI driver");
+    return;
   }
 
   // initialize queue for canbus message

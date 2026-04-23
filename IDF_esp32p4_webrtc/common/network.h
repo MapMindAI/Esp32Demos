@@ -10,6 +10,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -31,7 +32,7 @@ typedef int (*network_connect_cb)(bool connected);
  *      - 0       On success
  *      - Others  Fail to initialized
  */
-int network_init(const char *ssid, const char *password, network_connect_cb cb);
+int network_init(const char* ssid, const char* password, network_connect_cb cb);
 
 /**
  * @brief  Get current network mac
@@ -63,7 +64,7 @@ bool network_is_connected(void);
  *      - 0       On success
  *      - Others  Fail to connect
  */
-int network_connect_wifi(const char *ssid, const char *password);
+int network_connect_wifi(const char* ssid, const char* password);
 
 #ifdef __cplusplus
 }

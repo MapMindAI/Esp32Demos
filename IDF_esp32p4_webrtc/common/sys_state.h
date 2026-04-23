@@ -22,7 +22,7 @@ void sys_state_show(void);
 
 /**
  * @brief  Trace for heap memory
- * 
+ *
  * @param[in]  start  Start or stop trace
  */
 void sys_state_heap_trace(bool start);

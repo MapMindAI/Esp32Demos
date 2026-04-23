@@ -23,7 +23,7 @@ extern "C" {
  *       - NULL    Not enough memory
  *       - Others  HTTPS server signaling implementation
  */
-const esp_peer_signaling_impl_t *esp_signaling_get_http_impl(void);
+const esp_peer_signaling_impl_t* esp_signaling_get_http_impl(void);
 
 #ifdef __cplusplus
 }

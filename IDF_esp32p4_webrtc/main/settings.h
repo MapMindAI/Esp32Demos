@@ -30,7 +30,7 @@ extern "C" {
 #if CONFIG_IDF_TARGET_ESP32P4
 // #define VIDEO_WIDTH  1920
 // #define VIDEO_HEIGHT 1080
-#define VIDEO_FPS    25
+#define VIDEO_FPS 25
 
 #ifdef CONFIG_CAMERA_OV5647_MIPI_RAW8_800X1280_50FPS
 #define VIDEO_WIDTH 800
@@ -49,29 +49,28 @@ extern "C" {
 #define VIDEO_HEIGHT 720
 #endif
 
-
 #else
-#define VIDEO_WIDTH  320
+#define VIDEO_WIDTH 320
 #define VIDEO_HEIGHT 240
-#define VIDEO_FPS    10
+#define VIDEO_FPS 10
 #endif
 
 #ifdef CONFIG_DOORBELL_SUPPORT_PEDESTRIAN_DETECT
 #if CONFIG_IDF_TARGET_ESP32P4
-#define DETECT_WIDTH  320
+#define DETECT_WIDTH 320
 #define DETECT_HEIGHT 180
-#define DETECT_FPS    2
+#define DETECT_FPS 2
 #else
-#define DETECT_WIDTH  320
+#define DETECT_WIDTH 320
 #define DETECT_HEIGHT 240
-#define DETECT_FPS    1
+#define DETECT_FPS 1
 #endif
 #endif
 
 /**
  * @brief  Set for wifi ssid
  */
-#define WIFI_SSID     "DEEP-RD"
+#define WIFI_SSID "DEEP-RD"
 
 /**
  * @brief  Set for wifi password
@@ -91,14 +90,14 @@ extern "C" {
  *        When enable `NETWORK_USE_ETHERNET` will cause socket error
  *        User must replace it to a unused GPIO instead (like GPIO27)
  */
-#define DOOR_BELL_RING_BUTTON  35
+#define DOOR_BELL_RING_BUTTON 35
 #else
 /**
  * @brief  GPIO for ring button
  *
  * @note  When use ESP32S3-KORVO-V3 Use ADC button as ring button
  */
-#define DOOR_BELL_RING_BUTTON  5
+#define DOOR_BELL_RING_BUTTON 5
 #endif
 
 #ifdef __cplusplus

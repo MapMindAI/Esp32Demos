@@ -28,14 +28,14 @@ int media_sys_buildup(void);
 
 /**
  * @brief  Get media provider
- * 
+ *
  * @param[out]  provider  Media provider to be returned
  *
  * @return
  *      - 0       On success
  *      - Others  Invalid argument
  */
-int media_sys_get_provider(esp_webrtc_media_provider_t *provider);
+int media_sys_get_provider(esp_webrtc_media_provider_t* provider);
 
 /**
  * @brief  Play captured media directly
@@ -57,7 +57,7 @@ int test_capture_to_player(void);
  *      - 0       On success
  *      - Others  Fail to play
  */
-int play_music(const uint8_t *data, int size, int duration);
+int play_music(const uint8_t* data, int size, int duration);
 
 /**
  * @brief  Stop music
