@@ -9,6 +9,39 @@
 
 #define TAG "[CANBUS]"
 
+void print_memory_info() {
+  ESP_LOGI("[MEM]", "Internal Free Heap: %d bytes", heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
+  // ESP_LOGI("[MEM]", "Largest Free Block: %d bytes, DMA : %d bytes",
+  //         heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+  //         heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+  ESP_LOGI("[MEM]", "PSRAM Free Heap: %d / %d bytes", heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+        heap_caps_get_total_size(MALLOC_CAP_SPIRAM));
+}
+
+void print_all_tasks_stack(void) {
+  TaskStatus_t* pxTaskStatusArray;
+  volatile UBaseType_t uxArraySize, x;
+  uint32_t ulTotalRunTime;
+
+  uxArraySize = uxTaskGetNumberOfTasks();
+  pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t));
+
+  if (pxTaskStatusArray != NULL) {
+    uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, &ulTotalRunTime);
+
+    ESP_LOGI("STACK", "========== Task Stack Usage ==========");
+    for (x = 0; x < uxArraySize; x++) {
+      UBaseType_t uxHighWaterMark = uxTaskGetStackHighWaterMark(pxTaskStatusArray[x].xHandle);
+
+      ESP_LOGI("STACK", "Task: %-16s | Stack remaining: %4u words (%5u bytes) | Priority: %u",
+               pxTaskStatusArray[x].pcTaskName, uxHighWaterMark, uxHighWaterMark * 4,
+               pxTaskStatusArray[x].uxCurrentPriority);
+    }
+    vPortFree(pxTaskStatusArray);
+  }
+}
+
+
 CanbusMessageHandler canbus_message_handler_ = NULL;
 void SetCanbusMessageHandler(CanbusMessageHandler fcn) { canbus_message_handler_ = fcn; }
 

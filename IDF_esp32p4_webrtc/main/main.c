@@ -243,5 +243,6 @@ void app_main(void) {
     // UpdateLed(boottime_ms);
     media_lib_thread_sleep(2000);
     query_webrtc();
+    print_memory_info();
   }
 }
