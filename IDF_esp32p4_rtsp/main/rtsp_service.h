@@ -27,15 +27,14 @@
 #include <video_dev.h>
 #include "esp_rtsp.h"
 
-#define RTSP_SERVER_PORT            8554
-#define RTSP_STACK_SZIE             4*1024
-#define RTSP_TASK_PRIO              5
-#define RTSP_FRAME_SIZE             AV_FRAMESIZE_HVGA
+#define RTSP_SERVER_PORT 8554
+#define RTSP_STACK_SZIE 4 * 1024
+#define RTSP_TASK_PRIO 5
+#define RTSP_FRAME_SIZE AV_FRAMESIZE_HVGA
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 esp_rtsp_handle_t rtsp_service_start(camera_context* camera_context);
 
