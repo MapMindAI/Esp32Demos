@@ -1,0 +1,14 @@
+description: Espressif PeerConnection Library
+version: "1.3.3"
+url: "https://github.com/espressif/esp-webrtc-solution/tree/main/components/esp_peer"
+documentation: "https://github.com/espressif/esp-webrtc-solution/tree/main/components/esp_peer/README.md"
+issues: "https://github.com/espressif/esp-webrtc-solution/issues"
+
+tags:
+   - "WebRTC"
+   - "PeerConnection"
+   - "ICE"
+   - "P2P"
+
+dependencies:
+  espressif/esp_libsrtp: "^1.0.0"
