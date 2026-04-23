@@ -220,6 +220,7 @@ esp_err_t video_start(int width, int height, camera_context* cb_ctx) {
       for (int i = 0; i < jpeg_input_formats_num; i++) {
         if (jpeg_input_formats[i] == fmtdesc.pixelformat) {
           capture_fmt = jpeg_input_formats[i];
+          ESP_LOGW(TAG, "capture fmt %d %d", i, capture_fmt);
           break;
         }
       }
@@ -231,6 +232,7 @@ esp_err_t video_start(int width, int height, camera_context* cb_ctx) {
     }
   } else {
     capture_fmt = V4L2_PIX_FMT_YUV420;
+    ESP_LOGW(TAG, "capture fmt V4L2_PIX_FMT_YUV420");
   }
 
   /* Configure camera interface capture stream */
@@ -341,16 +343,33 @@ void video_stop(camera_context* cb_ctx) {
   ioctl(cb_ctx->m2m_fd, VIDIOC_STREAMOFF, &type);
 }
 
+
+// [Camera Sensor]
+//       ↓
+//    (cap_fd)
+//       ↓ DQBUF
+// [Raw Frame in RAM]
+//       ↓ QBUF (as input)
+//    (m2m_fd)
+//       ↓ processing
+//       ↓ DQBUF
+// [Processed Frame in RAM]
 frame_buffer_t* video_fb_get(camera_context* cb_ctx) {
   struct v4l2_buffer cap_buf;
   struct v4l2_buffer m2m_out_buf;
   struct v4l2_buffer m2m_cap_buf;
 
+  // dequeue one raw frame from the camera capture device
   memset(&cap_buf, 0, sizeof(cap_buf));
   cap_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   cap_buf.memory = V4L2_MEMORY_MMAP;
+  // VIDIOC_QBUF → “Here is a buffer, use it”
+  // VIDIOC_DQBUF → “Give me a buffer that is done”
   ESP_ERROR_CHECK(ioctl(cb_ctx->cap_fd, VIDIOC_DQBUF, &cap_buf));
 
+  // M2M device is a V4L2 device that:
+  // takes image data from memory as input, processes it, and writes the result back to memory
+  // queue that camera frame into the M2M device as input
   memset(&m2m_out_buf, 0, sizeof(m2m_out_buf));
   m2m_out_buf.index = 0;
   m2m_out_buf.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
@@ -359,14 +378,19 @@ frame_buffer_t* video_fb_get(camera_context* cb_ctx) {
   m2m_out_buf.length = cap_buf.bytesused;
   ESP_ERROR_CHECK(ioctl(cb_ctx->m2m_fd, VIDIOC_QBUF, &m2m_out_buf));
 
+  // dequeue the processed output from the M2M capture side
+  // This waits until the M2M engine has produced output.
   memset(&m2m_cap_buf, 0, sizeof(m2m_cap_buf));
   m2m_cap_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   m2m_cap_buf.memory = V4L2_MEMORY_MMAP;
   ESP_ERROR_CHECK(ioctl(cb_ctx->m2m_fd, VIDIOC_DQBUF, &m2m_cap_buf));
 
+  // return the camera capture buffer back to the camera driver
   ESP_ERROR_CHECK(ioctl(cb_ctx->cap_fd, VIDIOC_QBUF, &cap_buf));
+  // dequeue the M2M output-side input buffer completion
   ESP_ERROR_CHECK(ioctl(cb_ctx->m2m_fd, VIDIOC_DQBUF, &m2m_out_buf));
 
+  // fill the returned frame descriptor
   cb_ctx->fb.buf = cb_ctx->m2m_cap_buffer;
   cb_ctx->fb.len = m2m_cap_buf.bytesused;
 
@@ -392,7 +416,7 @@ frame_buffer_t* video_fb_get(camera_context* cb_ctx) {
 void video_after_take(const camera_context* cb_ctx) {
   struct v4l2_buffer m2m_cap_buf;
 
-  ESP_LOGD(TAG, "video return");
+  // ESP_LOGD(TAG, "video return");
 
   m2m_cap_buf.index = 0;
   m2m_cap_buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
