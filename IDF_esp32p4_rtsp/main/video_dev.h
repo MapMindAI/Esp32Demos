@@ -33,7 +33,7 @@ int video_dev_init(camera_context* context);
 
 esp_err_t video_start(int width, int height, camera_context* cb_ctx);
 
-IRAM_ATTR frame_buffer_t* video_fb_get(camera_context* cb_ctx);
+frame_buffer_t* video_fb_get(camera_context* cb_ctx);
 
 void video_after_take(const camera_context* cb_ctx);
 

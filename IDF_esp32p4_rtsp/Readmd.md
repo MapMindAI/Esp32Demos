@@ -4,6 +4,10 @@
 source $IDF_PATH/export.sh
 ```
 
+```
+idf.py build flash monitor
+```
+
 receive the stream with :
 ```
 ffplay -fflags nobuffer -flags low_delay -analyzeduration 1000000 rtsp://192.168.19.80:8554
