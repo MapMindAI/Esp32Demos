@@ -177,8 +177,6 @@ static void thread_scheduler(const char* thread_name, media_lib_thread_cfg_t* sc
 #endif
   else if (strcmp(thread_name, "AUD_SRC") == 0) {
     schedule_cfg->priority = 15;
-  } else if (strcmp(thread_name, "detect") == 0) {
-    schedule_cfg->priority = 8;
   } else if (strcmp(thread_name, "pc_task") == 0) {
     schedule_cfg->stack_size = 25 * 1024;
     schedule_cfg->priority = 18;

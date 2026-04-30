@@ -256,78 +256,6 @@
         .rtp-transformer-enabled:hover {
             background-color: #218838 !important;
         }
-        .detection-events {
-            margin-top: 15px;
-            padding: 0;
-            background: transparent;
-            flex: 1;
-            min-height: 0;
-            overflow: hidden;
-        }
-        .detection-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #e9ecef;
-            border-radius: 8px;
-            background: #fff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            flex-shrink: 1;
-        }
-        .detection-list:empty::after {
-            content: "No detection events yet";
-            display: block;
-            padding: 20px;
-            text-align: center;
-            color: #6c757d;
-            font-style: italic;
-        }
-        .detection-item {
-            padding: 12px 15px;
-            border-bottom: 1px solid #e9ecef;
-            background: #fff;
-            transition: background-color 0.2s ease;
-            animation: slideIn 0.3s ease-out;
-        }
-        .detection-item:last-child {
-            border-bottom: none;
-        }
-        .detection-item:hover {
-            background: #f8f9fa;
-        }
-        .detection-item.new-item {
-            background: #d4edda;
-            border-left: 4px solid #28a745;
-        }
-        .detection-time {
-            font-size: 12px;
-            color: #6c757d;
-            margin-bottom: 4px;
-        }
-        .detection-event {
-            font-weight: bold;
-            color: #28a745;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .detection-event svg {
-            width: 16px;
-            height: 16px;
-            fill: #28a745;
-        }
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
         /* Main control pad container */
         .control-pad {
             display: flex;
@@ -472,16 +400,6 @@
                 Open Door
             </button>
 
-            <button id="clearEventsButton" class="clear-events-button">
-                <svg viewBox="0 0 24 24">
-                    <path d="M12 2c1.1 0 2 .9 2 2 0 .74-.4 1.38-1 1.732V7h1.5c.83 0 1.5.67 1.5 1.5v1c0 .83-.67 1.5-1.5 1.5H14v9.5c0 .83-.67 1.5-1.5 1.5h-1c-.83 0-1.5-.67-1.5-1.5V11H8.5C7.67 11 7 10.33 7 9.5v-1C7 7.67 7.67 7 8.5 7H10V5.732C9.4 5.38 9 4.74 9 4c0-1.1.9-2 2-2zm0 2c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
-                </svg>
-                <div class="button-content">
-                    <span class="button-main">Detection Events</span>
-                    <span class="button-sub" id="eventCount">0 events</span>
-                </div>
-            </button>
-
             <!-- Configuration Section -->
             <button id="rtpTransformerToggleBtn" class="open-door-button">
                 <svg viewBox="0 0 24 24" style="width: 20px; height: 20px;">
@@ -490,12 +408,6 @@
                 <span id="rtpTransformerText">Enable RTP Transformer</span>
             </button>
 
-            <!-- Detection Events List -->
-            <div class="detection-events">
-                <ul id="detectionList" class="detection-list">
-                    <!-- Dynamic list items will be added here -->
-                </ul>
-            </div>
         </div>
     </div>
 
@@ -555,8 +467,6 @@
         let isRinging = false;
         let pendingCandidates = [];
         let dataChannels = [];
-        let detectionEvents = [];
-        let eventCounter = 0;
         let rtpTransformerEnabled = false;  // Default disabled
 
         // const localVideo = document.getElementById('localVideo');
@@ -565,9 +475,6 @@
         const hangupButton = document.getElementById('hangupButton');
         const openDoorButton = document.getElementById('openDoorButton');
         const statusDiv = document.getElementById('status');
-        const detectionList = document.getElementById('detectionList');
-        const eventCountSpan = document.getElementById('eventCount');
-        const clearEventsButton = document.getElementById('clearEventsButton');
         const rtpTransformerToggleBtn = document.getElementById('rtpTransformerToggleBtn');
         const rtpTransformerIcon = document.getElementById('rtpTransformerIcon');
         const rtpTransformerText = document.getElementById('rtpTransformerText');
@@ -609,91 +516,6 @@
                 ringSound.currentTime = 0;
             }
         }
-
-        // Add detection event to the list
-        function addDetectionEvent(eventType) {
-            eventCounter++;
-            const timestamp = new Date();
-
-            const event = {
-                id: eventCounter,
-                type: eventType,
-                timestamp: timestamp,
-                timeString: formatTimestamp(timestamp)
-            };
-
-            detectionEvents.unshift(event); // Add to beginning of array
-
-            // Create list item
-            const listItem = document.createElement('li');
-            listItem.className = 'detection-item new-item';
-            listItem.setAttribute('data-id', event.id);
-
-            listItem.innerHTML = `
-                <div class="detection-time">${event.timeString}</div>
-                <div class="detection-event">
-                    <svg viewBox="0 0 24 24">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                    </svg>
-                    ${eventType}
-                </div>
-            `;
-
-            // Insert at the top of the list
-            detectionList.insertBefore(listItem, detectionList.firstChild);
-
-            // Remove 'new-item' class after animation
-            setTimeout(() => {
-                listItem.classList.remove('new-item');
-            }, 3000);
-
-            // Update event count
-            updateEventCount();
-
-            console.log(`Added detection event: ${eventType} at ${event.timeString}`);
-        }
-
-        // Format timestamp for display
-        function formatTimestamp(date) {
-            const options = {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false
-            };
-            return date.toLocaleDateString('en-US', options).replace(/(\d+)\/(\d+)\/(\d+),\s/, '$3-$1-$2 ');
-        }
-
-        // Update event count display
-        function updateEventCount() {
-            const count = detectionEvents.length;
-            eventCountSpan.textContent = count === 1 ? '1 event' : `${count} events`;
-        }
-
-        // Clear all detection events
-        function clearDetectionEvents() {
-            detectionEvents = [];
-            detectionList.innerHTML = '';
-            eventCounter = 0;
-            updateEventCount();
-            console.log('Cleared all detection events');
-        }
-
-        // Clear events button handler
-        clearEventsButton.onclick = () => {
-            if (detectionEvents.length === 0) {
-                // If no events, just show info
-                alert('No detection events to clear.');
-                return;
-            }
-
-            if (confirm(`Clear all ${detectionEvents.length} detection event${detectionEvents.length === 1 ? '' : 's'}?`)) {
-                clearDetectionEvents();
-            }
-        };
 
         // Call button click handler
         callButton.onclick = async () => {
@@ -856,10 +678,6 @@
                     callButton.disabled = false;
                     callButton.classList.add('ringing');
                     hangupButton.disabled = false;
-                    break;
-                case 'PEDESTRIAN_DETECTED':
-                    console.log('Pedestrian detected...');
-                    addDetectionEvent('Pedestrian Detected');
                     break;
                 // Following command is by controlling only
                 case 'OPEN_DOOR':
@@ -1328,8 +1146,6 @@
             callButton.classList.remove('ringing');
             hangupButton.disabled = true;
             openDoorButton.disabled = false;
-            // Initialize detection events display
-            updateEventCount();
             // Initialize RTP transformer button state
             updateRtpTransformerButton();
 
