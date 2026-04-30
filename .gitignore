@@ -22,3 +22,4 @@ log.txt
 # **/dependencies.lock
 **/dist
 *_bash_history
+*.codex

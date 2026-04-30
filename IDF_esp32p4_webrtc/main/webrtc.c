@@ -108,19 +108,6 @@ static void door_bell_change_state(door_bell_state_t state) {
   }
 }
 
-#ifdef CONFIG_DOORBELL_SUPPORT_PEDESTRIAN_DETECT
-static esp_capture_sink_handle_t detect_sink = NULL;
-
-esp_capture_sink_handle_t get_detect_sink(void) { return detect_sink; }
-
-int pedestrian_detected(esp_capture_rgn_t* rgn, void* ctx) {
-  char region_str[128];
-  snprintf(region_str, sizeof(region_str) - 1, "PEDESTRIAN_DETECTED");
-  SEND_CMD(webrtc, region_str);
-  return 0;
-}
-#endif
-
 uint32_t current_velocity_ = 125;
 static bool ProcessMoveCommand(const char* cmd) {
   if (SAME_STR(cmd, "Up")) {
@@ -591,53 +578,6 @@ int start_webrtc(char* url) {
   // }
   esp_webrtc_set_video_bitrate(webrtc, 1000000);
 
-#ifdef CONFIG_DOORBELL_SUPPORT_PEDESTRIAN_DETECT
-  // Disable auto capture
-  esp_webrtc_set_no_auto_capture(webrtc, true);
-  // Pre-configuration for all sink
-  esp_capture_sink_cfg_t sink_cfg = {
-      .audio_info =
-          {
-#ifdef WEBRTC_SUPPORT_OPUS
-              .format_id = ESP_CAPTURE_FMT_ID_OPUS,
-#else
-              .format_id = ESP_CAPTURE_FMT_ID_G711A,
-#endif
-              .sample_rate = cfg.peer_cfg.audio_info.sample_rate,
-              .channel = cfg.peer_cfg.audio_info.channel,
-              .bits_per_sample = 16,
-          },
-      .video_info =
-          {
-              .format_id = ESP_CAPTURE_FMT_ID_H264,
-              .width = cfg.peer_cfg.video_info.width,
-              .height = cfg.peer_cfg.video_info.height,
-              .fps = cfg.peer_cfg.video_info.fps,
-          },
-  };
-  if (cfg.peer_cfg.audio_dir == ESP_PEER_MEDIA_DIR_RECV_ONLY) {
-    sink_cfg.audio_info.format_id = ESP_CAPTURE_FMT_ID_NONE;
-  }
-  if (cfg.peer_cfg.video_dir == ESP_PEER_MEDIA_DIR_RECV_ONLY) {
-    sink_cfg.video_info.format_id = ESP_CAPTURE_FMT_ID_NONE;
-  }
-  esp_capture_sink_handle_t main_sink = NULL;
-  esp_capture_sink_setup(media_provider.capture, 0, &sink_cfg, &main_sink);
-
-  // Configuration for capture sink 1 before start
-  esp_capture_sink_cfg_t sink_cfg_1 = {
-      .video_info =
-          {
-              .format_id = ESP_CAPTURE_FMT_ID_RGB565,
-              .width = DETECT_WIDTH,
-              .height = DETECT_HEIGHT,
-              .fps = DETECT_FPS,
-          },
-  };
-  esp_capture_sink_setup(media_provider.capture, 1, &sink_cfg_1, &detect_sink);
-  esp_capture_sink_enable(detect_sink, ESP_CAPTURE_RUN_MODE_ALWAYS);
-#endif
-
   // Set event handler
   esp_webrtc_set_event_handler(webrtc, webrtc_event_handler, NULL);
 
@@ -653,13 +593,6 @@ int start_webrtc(char* url) {
     ESP_LOGE(TAG, "Fail to start webrtc");
   } else {
     play_tone(DOOR_BELL_TONE_JOIN_SUCCESS);
-#ifdef CONFIG_DOORBELL_SUPPORT_PEDESTRIAN_DETECT
-    esp_capture_start(media_provider.capture);
-    pedestrian_detect_cfg_t cfg = {
-        .detected = pedestrian_detected,
-    };
-    start_pedestrian_detection(&cfg);
-#endif
   }
   return ret;
 }
@@ -677,13 +610,6 @@ int stop_webrtc(void) {
     webrtc = NULL;
     ESP_LOGI(TAG, "Start to close webrtc %p", handle);
 
-#ifdef CONFIG_DOORBELL_SUPPORT_PEDESTRIAN_DETECT
-    stop_pedestrian_detection();
-    esp_webrtc_media_provider_t media_provider = {};
-    media_sys_get_provider(&media_provider);
-    esp_capture_stop(media_provider.capture);
-    detect_sink = NULL;
-#endif
     esp_webrtc_close(handle);
     // Wait for data running exit
     while (data_running) {
