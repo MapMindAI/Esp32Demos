@@ -18,7 +18,9 @@
 #include "esp_webrtc_defaults.h"
 #include "media_lib_os.h"
 #include "robot_canbus.h"
+#if CONFIG_DOORBELL_SIGNALING_LOCAL_HTTP
 #include "webrtc_http_server.h"
+#endif
 
 #define TAG "DOOR_BELL"
 
@@ -516,6 +518,20 @@ int start_webrtc(char* url) {
   media_lib_thread_handle_t key_thread;
   media_lib_thread_create_from_scheduler(&key_thread, "Key", key_monitor_thread, NULL);
 
+  const char* signal_url = url;
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  if (signal_url == NULL || signal_url[0] == '\0') {
+    signal_url = WEBRTC_SIGNAL_URL;
+  }
+  esp_peer_signaling_janus_cfg_t janus_cfg = {
+      .room_id = WEBRTC_JANUS_ROOM_ID,
+      .token = strlen(WEBRTC_JANUS_TOKEN) ? WEBRTC_JANUS_TOKEN : NULL,
+      .pin = strlen(WEBRTC_JANUS_ROOM_PIN) ? WEBRTC_JANUS_ROOM_PIN : NULL,
+      .display = strlen(WEBRTC_JANUS_DISPLAY) ? WEBRTC_JANUS_DISPLAY : NULL,
+      .api_secret = strlen(WEBRTC_JANUS_API_SECRET) ? WEBRTC_JANUS_API_SECRET : NULL,
+  };
+#endif
+
   esp_peer_default_cfg_t peer_cfg = {
       .agent_recv_timeout = 500,
   };
@@ -556,10 +572,18 @@ int start_webrtc(char* url) {
           },
       .signaling_cfg =
           {
-              .signal_url = url,
+              .signal_url = (char*)signal_url,
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+              .extra_cfg = &janus_cfg,
+              .extra_size = sizeof(janus_cfg),
+#endif
           },
       .peer_impl = esp_peer_get_default_impl(),
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+      .signaling_impl = esp_signaling_get_janus_impl(),
+#else
       .signaling_impl = esp_signaling_get_http_impl(),
+#endif
   };
   int ret = esp_webrtc_open(&cfg, &webrtc);
   if (ret != 0) {

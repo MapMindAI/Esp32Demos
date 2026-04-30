@@ -1,2 +1,44 @@
 menu "DoorBell Local Demo"
+
+choice DOORBELL_SIGNALING_MODE
+    prompt "Signaling backend"
+    default DOORBELL_SIGNALING_LOCAL_HTTP
+    help
+        Select signaling mode for WebRTC.
+
+config DOORBELL_SIGNALING_LOCAL_HTTP
+    bool "Local HTTPS signaling on ESP32 (/webrtc/signal)"
+
+config DOORBELL_SIGNALING_JANUS
+    bool "Remote Janus VideoRoom signaling"
+endchoice
+
+if DOORBELL_SIGNALING_JANUS
+config DOORBELL_JANUS_SIGNAL_URL
+    string "Janus API base URL"
+    default "https://your-domain.example/janus"
+    help
+        Public Janus REST endpoint, for example:
+        https://webrtc.example.com/janus
+
+config DOORBELL_JANUS_ROOM_ID
+    int "Janus VideoRoom ID"
+    default 1234
+
+config DOORBELL_JANUS_ROOM_PIN
+    string "Janus room PIN (optional)"
+    default ""
+
+config DOORBELL_JANUS_DISPLAY
+    string "Publisher display name"
+    default "esp32-doorbell"
+
+config DOORBELL_JANUS_TOKEN
+    string "Janus token (optional)"
+    default ""
+
+config DOORBELL_JANUS_API_SECRET
+    string "Janus API secret (optional)"
+    default ""
+endif
 endmenu

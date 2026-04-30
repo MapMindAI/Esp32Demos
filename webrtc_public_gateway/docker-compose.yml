@@ -1,0 +1,37 @@
+services:
+  janus:
+    image: canyan/janus-gateway:latest
+    container_name: janus-gateway
+    restart: unless-stopped
+    volumes:
+      - ./janus/janus.jcfg:/usr/local/etc/janus/janus.jcfg:ro
+      - ./janus/janus.transport.http.jcfg:/usr/local/etc/janus/janus.transport.http.jcfg:ro
+      - ./janus/janus.transport.websockets.jcfg:/usr/local/etc/janus/janus.transport.websockets.jcfg:ro
+      - ./janus/janus.plugin.videoroom.jcfg:/usr/local/etc/janus/janus.plugin.videoroom.jcfg:ro
+    expose:
+      - "8088"
+      - "8188"
+    ports:
+      - "10000-10100:10000-10100/udp"
+      - "127.0.0.1:7088:7088"
+
+  caddy:
+    image: caddy:2
+    container_name: webrtc-edge
+    restart: unless-stopped
+    depends_on:
+      - janus
+    env_file:
+      - .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

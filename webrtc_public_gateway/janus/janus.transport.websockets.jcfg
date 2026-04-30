@@ -1,0 +1,11 @@
+general: {
+  ws = true
+  ws_port = 8188
+  ws_logging = "err,warn"
+
+  wss = false
+  wss_port = 8989
+}
+admin: {
+  admin_ws = false
+}

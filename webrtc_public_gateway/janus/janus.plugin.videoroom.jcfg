@@ -1,0 +1,21 @@
+general: {
+  # Optional global lock for creating/destroying rooms dynamically.
+  admin_key = "CHANGE_ME_VIDEOROOM_ADMIN_KEY"
+}
+
+room-1234: {
+  description = "ESP32 Doorbell"
+  is_private = false
+  publishers = 2
+  bitrate = 1500000
+  fir_freq = 2
+  audiocodec = "opus,pcma"
+  videocodec = "h264"
+
+  # Security controls.
+  pin = "CHANGE_ME_ROOM_PIN"
+  secret = "CHANGE_ME_ROOM_SECRET"
+
+  # If you enable token_auth in janus.jcfg and want per-room token checks:
+  # signed_tokens = true
+}

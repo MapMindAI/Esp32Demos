@@ -1,0 +1,20 @@
+{$PUBLIC_FQDN} {
+  encode zstd gzip
+
+  # Static remote viewer client
+  root * /srv/web
+  file_server
+
+  # Janus HTTP API (REST long polling)
+  reverse_proxy /janus* janus:8088
+
+  # Janus WebSocket API
+  reverse_proxy /janus-ws* janus:8188
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+}

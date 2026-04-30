@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ESP32 Doorbell Remote Viewer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; background: #0f172a; color: #e2e8f0; }
+    .card { max-width: 980px; margin: 0 auto; background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 16px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    input, button { padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0b1220; color: #e2e8f0; }
+    button { cursor: pointer; background: #1d4ed8; border-color: #1d4ed8; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    video { width: 100%; max-height: 70vh; background: black; border-radius: 8px; }
+    #status { color: #93c5fd; min-height: 20px; }
+    .hint { color: #94a3b8; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>ESP32 Doorbell Remote Viewer</h2>
+    <div class="row">
+      <input id="roomId" placeholder="Room ID" value="1234" />
+      <input id="roomPin" placeholder="Room PIN (if configured)" />
+      <input id="token" placeholder="Janus Token (optional)" />
+      <button id="connectBtn">Connect</button>
+      <button id="disconnectBtn" disabled>Disconnect</button>
+    </div>
+    <div id="status">Idle</div>
+    <p class="hint">This viewer subscribes to the first active publisher in the Janus VideoRoom.</p>
+    <video id="remoteVideo" autoplay playsinline controls></video>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/janus-gateway@1.2.3/dist/janus.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
