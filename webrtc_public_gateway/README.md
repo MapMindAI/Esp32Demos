@@ -25,11 +25,17 @@ This subproject deploys a secure, public-facing WebRTC stack on Linux:
 ## Prerequisites
 
 - Public Linux host with DNS A record (`webrtc.example.com` -> server IP)
-  - run `curl -4 https://api.ipify.org` to get public IP.
 - Docker + Docker Compose plugin
 - Firewall open:
-  - TCP `80`, `443`
+  - TCP `8080`, `8443`
   - UDP `10000-10100`
+
+```bash
+sudo ufw allow 8080/tcp
+sudo ufw allow 8443/tcp
+sudo ufw allow 10000:10100/udp
+sudo ufw status
+```
 
 ## Steps
 
@@ -43,11 +49,12 @@ cp .env.example .env
 2. Edit `janus/*.jcfg` secrets/placeholders:
 
 - `janus.jcfg`:
-  - `admin_secret`
+  - `admin_secret` with `openssl rand -base64 48`
   - `nat_1_1_mapping` to your public IP
 - `janus.plugin.videoroom.jcfg`:
   - `pin`, `secret`, `admin_key`
   - `room-1234` (or change room id consistently)
+  - room pin : `openssl rand -base64 24 | tr -d '\n'`
 
 3. Edit `.env`:
 
