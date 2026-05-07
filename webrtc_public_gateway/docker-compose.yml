@@ -1,0 +1,32 @@
+services:
+  janus:
+    image: canyan/janus-gateway:latest
+    container_name: janus-gateway
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./janus/janus.jcfg:/usr/local/etc/janus/janus.jcfg:ro
+      - ./janus/janus.transport.http.jcfg:/usr/local/etc/janus/janus.transport.http.jcfg:ro
+      - ./janus/janus.transport.websockets.jcfg:/usr/local/etc/janus/janus.transport.websockets.jcfg:ro
+      - ./janus/janus.plugin.videoroom.jcfg:/usr/local/etc/janus/janus.plugin.videoroom.jcfg:ro
+    # Host networking avoids Docker bridge ICE candidates (172.18.x.x).
+    # Janus listens directly on host interfaces and media ports.
+
+  caddy:
+    image: caddy:2
+    container_name: webrtc-edge
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      - janus
+    env_file:
+      - .env
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,14 @@
+general: {
+  json = "indented"
+  base_path = "/janus"
+  http = true
+  port = 8088
+  https = false
+  secure_port = 8089
+}
+admin: {
+  admin_base_path = "/admin"
+  admin_http = true
+  admin_port = 7088
+  admin_https = false
+}

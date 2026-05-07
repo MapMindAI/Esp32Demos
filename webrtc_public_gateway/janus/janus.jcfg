@@ -1,0 +1,27 @@
+general: {
+  configs_folder = "/usr/local/etc/janus"
+  log_timestamps = true
+  log_colors = false
+  daemonize = false
+
+  # Turn on only if you also configure tokens from server side.
+  token_auth = false
+  # token_auth_secret = "CHANGE_ME_TOKEN_HMAC_SECRET"
+}
+
+admin: {
+  admin_http = true
+  admin_port = 7088
+  admin_secret = "CHANGE_ME_ADMIN_SECRET"
+  admin_base_path = "/admin"
+}
+
+nat: {
+  # Replace with your Linux host public IP.
+  nat_1_1_mapping = "REPLACE_WITH_PUBLIC_IP"
+}
+
+media: {
+  # Restrict media port range and open these UDP ports in firewall.
+  rtp_port_range = "10000-10100"
+}

@@ -18,7 +18,9 @@
 #include "esp_webrtc_defaults.h"
 #include "media_lib_os.h"
 #include "robot_canbus.h"
+#if CONFIG_DOORBELL_SIGNALING_LOCAL_HTTP
 #include "webrtc_http_server.h"
+#endif
 
 #define TAG "DOOR_BELL"
 
@@ -516,6 +518,20 @@ int start_webrtc(char* url) {
   media_lib_thread_handle_t key_thread;
   media_lib_thread_create_from_scheduler(&key_thread, "Key", key_monitor_thread, NULL);
 
+  const char* signal_url = url;
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  if (signal_url == NULL || signal_url[0] == '\0') {
+    signal_url = WEBRTC_SIGNAL_URL;
+  }
+  esp_peer_signaling_janus_cfg_t janus_cfg = {
+      .room_id = WEBRTC_JANUS_ROOM_ID,
+      .token = strlen(WEBRTC_JANUS_TOKEN) ? WEBRTC_JANUS_TOKEN : NULL,
+      .pin = strlen(WEBRTC_JANUS_ROOM_PIN) ? WEBRTC_JANUS_ROOM_PIN : NULL,
+      .display = strlen(WEBRTC_JANUS_DISPLAY) ? WEBRTC_JANUS_DISPLAY : NULL,
+      .api_secret = strlen(WEBRTC_JANUS_API_SECRET) ? WEBRTC_JANUS_API_SECRET : NULL,
+  };
+#endif
+
   esp_peer_default_cfg_t peer_cfg = {
       .agent_recv_timeout = 500,
   };
@@ -550,16 +566,29 @@ int start_webrtc(char* url) {
               .on_channel_close = webrtc_data_channel_closed,
               .enable_data_channel = true,
               .manual_ch_create = true,   // If work as SCTP client disable create data channel automatically
-              .no_auto_reconnect = true,  // No auto connect peer when signaling connected
+              .no_auto_reconnect =
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+                  false,  // Janus test mode: auto connect without ACCEPT_CALL gating
+#else
+                  true,  // No auto connect peer when signaling connected
+#endif
               .extra_cfg = &peer_cfg,
               .extra_size = sizeof(peer_cfg),
           },
       .signaling_cfg =
           {
-              .signal_url = url,
+              .signal_url = (char*)signal_url,
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+              .extra_cfg = &janus_cfg,
+              .extra_size = sizeof(janus_cfg),
+#endif
           },
       .peer_impl = esp_peer_get_default_impl(),
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+      .signaling_impl = esp_signaling_get_janus_impl(),
+#else
       .signaling_impl = esp_signaling_get_http_impl(),
+#endif
   };
   int ret = esp_webrtc_open(&cfg, &webrtc);
   if (ret != 0) {
@@ -581,8 +610,13 @@ int start_webrtc(char* url) {
   // Set event handler
   esp_webrtc_set_event_handler(webrtc, webrtc_event_handler, NULL);
 
+  // For Janus publishing tests, auto-enable peer connection immediately.
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  esp_webrtc_enable_peer_connection(webrtc, true);
+#else
   // Default disable auto connect of peer connection
   esp_webrtc_enable_peer_connection(webrtc, false);
+#endif
 
   media_lib_thread_handle_t data_thread;
   media_lib_thread_create_from_scheduler(&data_thread, "data", data_thread_hdlr, NULL);
@@ -592,6 +626,10 @@ int start_webrtc(char* url) {
   if (ret != 0) {
     ESP_LOGE(TAG, "Fail to start webrtc");
   } else {
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    // Ensure pending_connect is cleared after signaling startup.
+    esp_webrtc_enable_peer_connection(webrtc, true);
+#endif
     play_tone(DOOR_BELL_TONE_JOIN_SUCCESS);
   }
   return ret;
