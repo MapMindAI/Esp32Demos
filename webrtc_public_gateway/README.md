@@ -30,12 +30,16 @@ This subproject deploys a secure, public-facing WebRTC stack on Linux:
   - TCP `8080`, `8443`
   - UDP `10000-10100`
 
+<details>
+<summary>ufw cmd in linux</summary>
+
 ```bash
 sudo ufw allow 8080/tcp
 sudo ufw allow 8443/tcp
 sudo ufw allow 10000:10100/udp
 sudo ufw status
 ```
+</details>
 
 ## Quick local functional test (single host)
 
@@ -60,7 +64,7 @@ Notes:
 - `nat_1_1_mapping` is intentionally disabled in `janus.jcfg` for local testing.
 - For cloud/public Internet testing, re-enable `nat_1_1_mapping` with the real public IP and use HTTPS/WSS via your domain.
 
-## Steps
+## Server Deployment Steps
 
 1. Copy env template:
 
@@ -79,9 +83,7 @@ cp .env.example .env
   - `room-1234` (or change room id consistently)
   - room pin : `openssl rand -base64 24 | tr -d '\n'`
 
-3. Edit `.env`:
-
-- `PUBLIC_FQDN=your-domain`
+3. Edit `.env` setup `PUBLIC_FQDN=your-domain`
 
 4. Start stack:
 
@@ -89,9 +91,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-5. Open viewer:
-
-- `https://<PUBLIC_FQDN>/`
+5. Open viewer: `https://<PUBLIC_FQDN>/`
 
 ## 4. ESP32 firmware configuration
 
@@ -128,7 +128,8 @@ If `token_auth = true` is enabled in Janus:
 
 Then paste token in web client `Token` input.
 
-## 5.1 Enable token + API secret checks
+<details>
+<summary>Enable token + API secret checks</summary>
 
 1. Edit `janus/janus.jcfg`:
 
@@ -161,6 +162,8 @@ docker compose restart janus
 - Web viewer:
   - `Janus Token`: same token (or another valid token you added)
   - `Janus API Secret`: same `api_secret` value from `janus.jcfg`
+
+</details>
 
 ## 6. Operational notes
 
