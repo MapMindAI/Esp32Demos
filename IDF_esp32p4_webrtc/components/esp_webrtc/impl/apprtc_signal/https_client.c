@@ -83,18 +83,26 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
             break;
         case HTTP_EVENT_ON_DATA:
             ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
-            if (!esp_http_client_is_chunked_response(evt->client)) {
-                int content_len = esp_http_client_get_content_length(evt->client);
-                if (info->data == NULL && content_len) {
-                    info->data = malloc(content_len);
-                    if (info->data) {
-                        info->size = content_len;
+            if (evt->data_len > 0) {
+                int need = info->fill_size + evt->data_len;
+                if (need > info->size) {
+                    int new_size = need;
+                    uint8_t *new_buf = realloc(info->data, new_size);
+                    if (new_buf == NULL) {
+                        ESP_LOGE(TAG, "Failed to allocate HTTP response buffer");
+                        if (info->data) {
+                            free(info->data);
+                            info->data = NULL;
+                        }
+                        info->fill_size = 0;
+                        info->size = 0;
+                        break;
                     }
+                    info->data = new_buf;
+                    info->size = new_size;
                 }
-                if (evt->data_len && info->fill_size + evt->data_len <= info->size) {
-                    memcpy(info->data + info->fill_size, evt->data, evt->data_len);
-                    info->fill_size += evt->data_len;
-                }
+                memcpy(info->data + info->fill_size, evt->data, evt->data_len);
+                info->fill_size += evt->data_len;
             }
             break;
         case HTTP_EVENT_ON_FINISH:

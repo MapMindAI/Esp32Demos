@@ -5,11 +5,11 @@
   root * /srv/web
   file_server
 
-  # Janus HTTP API (REST long polling)
-  reverse_proxy /janus* janus:8088
+  # Janus HTTP API (REST long polling) (host.docker.internal)
+  reverse_proxy /janus* 127.0.0.1:8088
 
   # Janus WebSocket API
-  reverse_proxy /janus-ws* janus:8188
+  reverse_proxy /janus-ws* 127.0.0.1:8188
 
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
@@ -19,16 +19,16 @@
   }
 }
 
-# Local functional testing (no TLS/domain required):
+# Local functional testing:
 # open http://localhost:8080 on host.
-:80 {
+:8080 {
   encode zstd gzip
 
   root * /srv/web
   file_server
 
-  reverse_proxy /janus* janus:8088
-  reverse_proxy /janus-ws* janus:8188
+  reverse_proxy /janus* 127.0.0.1:8088
+  reverse_proxy /janus-ws* 127.0.0.1:8188
 
   header {
     X-Content-Type-Options "nosniff"

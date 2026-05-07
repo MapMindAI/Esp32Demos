@@ -62,18 +62,25 @@ typedef struct {
 static void janus_save_response(http_resp_t *resp, void *ctx)
 {
     janus_http_resp_t *http_resp = (janus_http_resp_t *)ctx;
-    if (resp->size > http_resp->malloc_size) {
-        SAFE_FREE(http_resp->data);
-        http_resp->malloc_size = 0;
-        http_resp->data = malloc(resp->size + 1);
-        if (http_resp->data == NULL) {
+    if (resp == NULL || resp->data == NULL || resp->size <= 0 || http_resp == NULL) {
+        return;
+    }
+    int required = http_resp->size + resp->size + 1;
+    if (required > http_resp->malloc_size) {
+        int new_size = required;
+        char *new_buf = realloc(http_resp->data, new_size);
+        if (new_buf == NULL) {
+            SAFE_FREE(http_resp->data);
+            http_resp->malloc_size = 0;
+            http_resp->size = 0;
             return;
         }
-        http_resp->malloc_size = resp->size + 1;
+        http_resp->data = new_buf;
+        http_resp->malloc_size = new_size;
     }
-    memcpy(http_resp->data, resp->data, resp->size);
-    http_resp->data[resp->size] = 0;
-    http_resp->size = resp->size;
+    memcpy(http_resp->data + http_resp->size, resp->data, resp->size);
+    http_resp->size += resp->size;
+    http_resp->data[http_resp->size] = 0;
 }
 
 static char *janus_create_txn(void)
@@ -107,13 +114,23 @@ static int janus_send_api(janus_signaling_t *sig, const char *method, const char
     if (url == NULL || payload == NULL) {
         return ESP_PEER_ERR_INVALID_ARG;
     }
+    if (http_resp) {
+        SAFE_FREE(http_resp->data);
+        http_resp->size = 0;
+        http_resp->malloc_size = 0;
+    }
     char content_type[] = "Content-Type: application/json";
     char *headers[] = {content_type, NULL};
     char *data = cJSON_PrintUnformatted(payload);
     if (data == NULL) {
         return ESP_PEER_ERR_NO_MEM;
     }
+    ESP_LOGI(TAG, "Janus API %s %s", method, url);
+    ESP_LOGD(TAG, "Janus API req: %s", data);
     int ret = https_send_request(method, headers, url, data, NULL, janus_save_response, http_resp);
+    if (http_resp && http_resp->data) {
+        ESP_LOGD(TAG, "Janus API resp: %s", http_resp->data);
+    }
     free(data);
     return ret;
 }
@@ -152,6 +169,7 @@ static int janus_get_ids(janus_signaling_t *sig)
         }
         json = cJSON_Parse(resp.data);
         if (json == NULL || janus_parse_error(json) != 0) {
+            ESP_LOGE(TAG, "Invalid Janus create response: %s", resp.data ? resp.data : "(null)");
             break;
         }
         cJSON *data = cJSON_GetObjectItem(json, "data");
@@ -186,6 +204,7 @@ static int janus_get_ids(janus_signaling_t *sig)
         }
         json = cJSON_Parse(resp.data);
         if (json == NULL || janus_parse_error(json) != 0) {
+            ESP_LOGE(TAG, "Invalid Janus attach response: %s", resp.data ? resp.data : "(null)");
             break;
         }
         data = cJSON_GetObjectItem(json, "data");
@@ -229,6 +248,7 @@ static int janus_get_ids(janus_signaling_t *sig)
         }
         json = cJSON_Parse(resp.data);
         if (json == NULL || janus_parse_error(json) != 0) {
+            ESP_LOGE(TAG, "Invalid Janus join response: %s", resp.data ? resp.data : "(null)");
             break;
         }
         ret = ESP_PEER_ERR_NONE;

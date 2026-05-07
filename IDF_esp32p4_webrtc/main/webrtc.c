@@ -566,7 +566,12 @@ int start_webrtc(char* url) {
               .on_channel_close = webrtc_data_channel_closed,
               .enable_data_channel = true,
               .manual_ch_create = true,   // If work as SCTP client disable create data channel automatically
-              .no_auto_reconnect = true,  // No auto connect peer when signaling connected
+              .no_auto_reconnect =
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+                  false,  // Janus test mode: auto connect without ACCEPT_CALL gating
+#else
+                  true,  // No auto connect peer when signaling connected
+#endif
               .extra_cfg = &peer_cfg,
               .extra_size = sizeof(peer_cfg),
           },
@@ -605,8 +610,13 @@ int start_webrtc(char* url) {
   // Set event handler
   esp_webrtc_set_event_handler(webrtc, webrtc_event_handler, NULL);
 
+  // For Janus publishing tests, auto-enable peer connection immediately.
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  esp_webrtc_enable_peer_connection(webrtc, true);
+#else
   // Default disable auto connect of peer connection
   esp_webrtc_enable_peer_connection(webrtc, false);
+#endif
 
   media_lib_thread_handle_t data_thread;
   media_lib_thread_create_from_scheduler(&data_thread, "data", data_thread_hdlr, NULL);
@@ -616,6 +626,10 @@ int start_webrtc(char* url) {
   if (ret != 0) {
     ESP_LOGE(TAG, "Fail to start webrtc");
   } else {
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    // Ensure pending_connect is cleared after signaling startup.
+    esp_webrtc_enable_peer_connection(webrtc, true);
+#endif
     play_tone(DOOR_BELL_TONE_JOIN_SUCCESS);
   }
   return ret;
