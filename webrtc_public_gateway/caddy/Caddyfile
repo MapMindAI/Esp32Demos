@@ -18,3 +18,21 @@
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 }
+
+# Local functional testing (no TLS/domain required):
+# open http://localhost:8080 on host.
+:80 {
+  encode zstd gzip
+
+  root * /srv/web
+  file_server
+
+  reverse_proxy /janus* janus:8088
+  reverse_proxy /janus-ws* janus:8188
+
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+}

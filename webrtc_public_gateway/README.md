@@ -26,7 +26,7 @@ This subproject deploys a secure, public-facing WebRTC stack on Linux:
 
 - Public Linux host with DNS A record (`webrtc.example.com` -> server IP)
 - Docker + Docker Compose plugin
-- Firewall open:
+- Firewall open (or change from your cloud server control panel):
   - TCP `8080`, `8443`
   - UDP `10000-10100`
 
@@ -36,6 +36,29 @@ sudo ufw allow 8443/tcp
 sudo ufw allow 10000:10100/udp
 sudo ufw status
 ```
+
+## Quick local functional test (single host)
+
+Use this when you only want to verify Janus/Web viewer basics locally, without public DNS/TLS.
+
+1. Start stack:
+
+```bash
+cd webrtc_public_gateway
+docker compose up -d
+```
+
+2. Open local viewer:
+
+- `http://localhost:8080/`
+
+3. Point ESP32 Janus API base URL to:
+
+- `http://<your-linux-host-ip>:8080/janus`
+
+Notes:
+- `nat_1_1_mapping` is intentionally disabled in `janus.jcfg` for local testing.
+- For cloud/public Internet testing, re-enable `nat_1_1_mapping` with the real public IP and use HTTPS/WSS via your domain.
 
 ## Steps
 
@@ -104,6 +127,40 @@ If `token_auth = true` is enabled in Janus:
 ```
 
 Then paste token in web client `Token` input.
+
+## 5.1 Enable token + API secret checks
+
+1. Edit `janus/janus.jcfg`:
+
+- Set `token_auth = true`
+- Set `api_secret = "<your-strong-secret>"`
+
+Example secret:
+
+```bash
+openssl rand -base64 32 | tr -d '\n'
+```
+
+2. Restart Janus:
+
+```bash
+docker compose restart janus
+```
+
+3. Create token(s) via admin API:
+
+```bash
+./scripts/add_token.sh ${ADMIN_SECRET} ${TOKEN_FOR_DEVICE_OR_VIEWER} http://127.0.0.1:7088/admin
+```
+
+4. Configure clients:
+
+- ESP32:
+  - `CONFIG_DOORBELL_JANUS_TOKEN="<TOKEN_FOR_DEVICE_OR_VIEWER>"`
+  - `CONFIG_DOORBELL_JANUS_API_SECRET="<your-strong-secret>"`
+- Web viewer:
+  - `Janus Token`: same token (or another valid token you added)
+  - `Janus API Secret`: same `api_secret` value from `janus.jcfg`
 
 ## 6. Operational notes
 

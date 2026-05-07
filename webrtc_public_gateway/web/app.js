@@ -101,12 +101,18 @@
   }
 
   async function connect() {
+    if (!window.Janus) {
+      setStatus('Janus JS library failed to load. Check Internet/CDN access, then refresh.');
+      return;
+    }
+
     connectBtn.disabled = true;
     disconnectBtn.disabled = false;
 
     const roomId = parseInt(document.getElementById('roomId').value, 10);
     const roomPin = document.getElementById('roomPin').value.trim();
     const token = document.getElementById('token').value.trim();
+    const apiSecret = document.getElementById('apiSecret').value.trim();
 
     if (!Number.isFinite(roomId)) {
       setStatus('Invalid room ID.');
@@ -121,6 +127,7 @@
         janus = new Janus({
           server: janusServer,
           token: token || undefined,
+          apisecret: apiSecret || undefined,
           success: () => {
             setStatus('Connected to Janus.');
             attachManager(roomId, roomPin);

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="icon" href="data:," />
   <title>ESP32 Doorbell Remote Viewer</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 24px; background: #0f172a; color: #e2e8f0; }
@@ -23,6 +24,7 @@
       <input id="roomId" placeholder="Room ID" value="1234" />
       <input id="roomPin" placeholder="Room PIN (if configured)" />
       <input id="token" placeholder="Janus Token (optional)" />
+      <input id="apiSecret" placeholder="Janus API Secret (if enabled)" />
       <button id="connectBtn">Connect</button>
       <button id="disconnectBtn" disabled>Disconnect</button>
     </div>
@@ -31,7 +33,8 @@
     <video id="remoteVideo" autoplay playsinline controls></video>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/janus-gateway@1.2.3/dist/janus.min.js"></script>
+  <script src="/vendor/adapter.js"></script>
+  <script src="/vendor/janus.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
