@@ -173,3 +173,68 @@ docker compose restart janus
   - UDP `10000-10100` open both cloud SG and host firewall
   - `nat_1_1_mapping` points to correct public IP
 - For production, rotate all secrets and restrict admin API access to localhost/VPN only.
+
+## 7. MQTT command + telemetry
+
+This project also supports MQTT for bidirectional control/status:
+
+- ESP32 publishes memory telemetry.
+- Browser subscribes telemetry and sends command strings.
+
+### Broker service
+
+`docker-compose.yml` includes a Mosquitto broker:
+
+- MQTT TCP: `1883`
+- MQTT WebSocket: `9001`
+
+Start/restart:
+
+```bash
+cd webrtc_public_gateway
+docker compose up -d --force-recreate mosquitto
+docker logs mqtt-broker --tail 120
+```
+
+### Authentication model
+
+MQTT auth is enabled (`allow_anonymous false`).
+
+- MQTT username: `ROOM_ID`
+- MQTT password: `ROOM_PIN`
+
+Broker user/password is initialized at container startup using `.env` values:
+
+- `JANUS_ROOM_ID`
+- `JANUS_ROOM_PIN`
+
+### Topic convention
+
+- Memory topic: `<ROOM_ID>/memory`
+- Command topic: `<ROOM_ID>/command`
+
+Example with room `1234`:
+
+- `1234/memory`
+- `1234/command`
+
+### ESP32 side
+
+Firmware uses:
+
+- `CONFIG_DOORBELL_MQTT_BROKER_URI` for broker URI (menuconfig)
+- `CONFIG_DOORBELL_JANUS_ROOM_ID` for MQTT username/topic prefix
+- `CONFIG_DOORBELL_JANUS_ROOM_PIN` for MQTT password
+
+Expected log when command arrives:
+
+- `MQTT command received: <your_command>`
+
+### Web UI side
+
+In `http://<host>:8080/`:
+
+- MQTT fields auto-fill from Room ID/PIN.
+- Default topics auto-fill as `ROOM_ID/memory` and `ROOM_ID/command`.
+- Click `MQTT Connect` to start receiving telemetry.
+- Use `Send MQTT Cmd` to send string command to ESP32.

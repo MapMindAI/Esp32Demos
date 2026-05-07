@@ -13,7 +13,6 @@
 #include <esp_wifi.h>
 #include <nvs_flash.h>
 #include <sys/param.h>
-#include "argtable3/argtable3.h"
 #include "common.h"
 #include "esp_capture.h"
 #include "esp_console.h"
@@ -25,6 +24,7 @@
 #include "media_lib_os.h"
 #include "robot_canbus.h"
 #include "settings.h"
+#include "mqtt_bridge.h"
 #include "webrtc_utils_time.h"
 
 static const char* TAG = "Webrtc_Test";
@@ -210,6 +210,7 @@ void sctp_show_details(bool enable);
 
 static int network_event_handler(bool connected) {
   if (connected) {
+    mqtt_bridge_start();
     // Enter into Room directly
     RUN_ASYNC(start, {
       start_webrtc(NULL);
@@ -217,6 +218,7 @@ static int network_event_handler(bool connected) {
     });
     // sctp_show_details(true);
   } else {
+    mqtt_bridge_stop();
     stop_webrtc();
   }
   return 0;

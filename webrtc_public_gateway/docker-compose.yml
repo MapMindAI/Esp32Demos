@@ -27,6 +27,25 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    user: "0:0"
+    restart: unless-stopped
+    env_file:
+      - .env
+    entrypoint: ["/bin/sh", "/mosquitto/config/init.sh"]
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/init.sh:/mosquitto/config/init.sh:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
 volumes:
   caddy_data:
   caddy_config:
+  mosquitto_data:
+  mosquitto_log:

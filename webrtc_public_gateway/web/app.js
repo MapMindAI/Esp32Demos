@@ -7,13 +7,34 @@
   let statsTimer = null;
   let prevVideoBytes = 0;
   let prevStatsTs = 0;
+  let mqttClient = null;
 
   const statusEl = document.getElementById('status');
   const videoEl = document.getElementById('remoteVideo');
   const connectBtn = document.getElementById('connectBtn');
   const disconnectBtn = document.getElementById('disconnectBtn');
+  const roomIdEl = document.getElementById('roomId');
+  const roomPinEl = document.getElementById('roomPin');
+  const mqttWsUrlEl = document.getElementById('mqttWsUrl');
+  const mqttUsernameEl = document.getElementById('mqttUsername');
+  const mqttPasswordEl = document.getElementById('mqttPassword');
+  const mqttMemTopicEl = document.getElementById('mqttMemTopic');
+  const mqttCmdTopicEl = document.getElementById('mqttCmdTopic');
+  const mqttConnectBtn = document.getElementById('mqttConnectBtn');
+  const mqttDisconnectBtn = document.getElementById('mqttDisconnectBtn');
+  const mqttCmdInputEl = document.getElementById('mqttCmdInput');
+  const mqttSendBtn = document.getElementById('mqttSendBtn');
+  const mqttStatusEl = document.getElementById('mqttStatus');
+  const mqttLogEl = document.getElementById('mqttLog');
 
   const setStatus = (msg) => { statusEl.textContent = msg; };
+  const setMqttStatus = (msg) => { mqttStatusEl.textContent = msg; };
+
+  function appendMqttLog(line) {
+    const ts = new Date().toLocaleTimeString();
+    mqttLogEl.textContent += `[${ts}] ${line}\n`;
+    mqttLogEl.scrollTop = mqttLogEl.scrollHeight;
+  }
 
   const janusServer = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/janus-ws`;
 
@@ -202,6 +223,110 @@
     return '🟢';
   }
 
+  function syncMqttFromRoom() {
+    const roomId = roomIdEl.value.trim();
+    const roomPin = roomPinEl.value.trim();
+    if (roomId) {
+      mqttUsernameEl.value = roomId;
+      mqttMemTopicEl.value = `${roomId}/memory`;
+      mqttCmdTopicEl.value = `${roomId}/command`;
+    }
+    mqttPasswordEl.value = roomPin;
+  }
+
+  function mqttConnect() {
+    if (!window.mqtt) {
+      setMqttStatus('MQTT: mqtt.js failed to load');
+      return;
+    }
+    if (mqttClient) {
+      mqttClient.end(true);
+      mqttClient = null;
+    }
+    const wsUrl = mqttWsUrlEl.value.trim();
+    const roomIdStr = document.getElementById('roomId').value.trim();
+    const username = mqttUsernameEl.value.trim() || roomIdStr;
+    const roomPin = document.getElementById('roomPin').value.trim();
+    const password = mqttPasswordEl.value.trim() || roomPin;
+    const memTopic = mqttMemTopicEl.value.trim() || `${roomIdStr}/memory`;
+    const cmdTopic = mqttCmdTopicEl.value.trim() || `${roomIdStr}/command`;
+    if (!wsUrl || !memTopic || !cmdTopic || !password) {
+      setMqttStatus('MQTT: URL/topic/password is empty');
+      return;
+    }
+
+    const clientId = `viewer_${Math.random().toString(16).slice(2, 10)}`;
+    mqttClient = window.mqtt.connect(wsUrl, {
+      clientId,
+      clean: true,
+      reconnectPeriod: 2000,
+      connectTimeout: 5000,
+      username,
+      password,
+    });
+    setMqttStatus(`MQTT: connecting (${clientId})...`);
+    appendMqttLog(`Connecting ${wsUrl}`);
+
+    mqttClient.on('connect', () => {
+      setMqttStatus(`MQTT: connected, subscribed ${memTopic}`);
+      mqttConnectBtn.disabled = true;
+      mqttDisconnectBtn.disabled = false;
+      mqttSendBtn.disabled = false;
+      mqttClient.subscribe(memTopic, { qos: 0 }, (err) => {
+        if (err) {
+          appendMqttLog(`Subscribe failed: ${err.message || err}`);
+        } else {
+          appendMqttLog(`Subscribed: ${memTopic}`);
+        }
+      });
+    });
+    mqttClient.on('reconnect', () => setMqttStatus('MQTT: reconnecting...'));
+    mqttClient.on('close', () => {
+      setMqttStatus('MQTT: disconnected');
+      mqttConnectBtn.disabled = false;
+      mqttDisconnectBtn.disabled = true;
+      mqttSendBtn.disabled = true;
+    });
+    mqttClient.on('error', (err) => {
+      appendMqttLog(`Error: ${err.message || err}`);
+    });
+    mqttClient.on('message', (topic, payload) => {
+      const text = payload ? payload.toString() : '';
+      appendMqttLog(`RX ${topic}: ${text}`);
+    });
+  }
+
+  function mqttDisconnect() {
+    if (mqttClient) {
+      mqttClient.end(true);
+      mqttClient = null;
+    }
+    mqttConnectBtn.disabled = false;
+    mqttDisconnectBtn.disabled = true;
+    mqttSendBtn.disabled = true;
+    setMqttStatus('MQTT: disconnected');
+  }
+
+  function mqttSendCommand() {
+    if (!mqttClient || !mqttClient.connected) {
+      setMqttStatus('MQTT: not connected');
+      return;
+    }
+    const cmdTopic = mqttCmdTopicEl.value.trim();
+    const cmd = mqttCmdInputEl.value.trim();
+    if (!cmd) {
+      setMqttStatus('MQTT: command is empty');
+      return;
+    }
+    mqttClient.publish(cmdTopic, cmd, { qos: 0, retain: false }, (err) => {
+      if (err) {
+        appendMqttLog(`TX failed: ${err.message || err}`);
+      } else {
+        appendMqttLog(`TX ${cmdTopic}: ${cmd}`);
+      }
+    });
+  }
+
   function requestAndAttachPublisher(roomId, roomPin) {
     if (!managerHandle) {
       return;
@@ -310,4 +435,15 @@
     await destroySession();
     setStatus('Disconnected.');
   });
+  mqttConnectBtn.addEventListener('click', mqttConnect);
+  mqttDisconnectBtn.addEventListener('click', mqttDisconnect);
+  mqttSendBtn.addEventListener('click', mqttSendCommand);
+  mqttCmdInputEl.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      mqttSendCommand();
+    }
+  });
+  roomIdEl.addEventListener('input', syncMqttFromRoom);
+  roomPinEl.addEventListener('input', syncMqttFromRoom);
+  syncMqttFromRoom();
 })();

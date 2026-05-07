@@ -30,11 +30,29 @@
     </div>
     <div id="status">Idle</div>
     <p class="hint">This viewer subscribes to the first active publisher in the Janus VideoRoom.</p>
+    <hr style="border-color:#334155; margin: 14px 0;" />
+    <h3>MQTT Command/Test</h3>
+    <div class="row">
+      <input id="mqttWsUrl" placeholder="MQTT WS URL" value="ws://192.168.19.25:9001" style="min-width:260px;" />
+      <input id="mqttUsername" placeholder="MQTT username (empty = Room ID)" />
+      <input id="mqttPassword" placeholder="MQTT password (empty = Room PIN)" />
+      <input id="mqttMemTopic" placeholder="Memory topic (empty = ROOM_ID/memory)" />
+      <input id="mqttCmdTopic" placeholder="Command topic (empty = ROOM_ID/command)" />
+      <button id="mqttConnectBtn">MQTT Connect</button>
+      <button id="mqttDisconnectBtn" disabled>MQTT Disconnect</button>
+    </div>
+    <div class="row">
+      <input id="mqttCmdInput" placeholder="Send command string to ESP32" style="flex:1; min-width: 260px;" />
+      <button id="mqttSendBtn" disabled>Send MQTT Cmd</button>
+    </div>
+    <div id="mqttStatus" class="hint">MQTT: disconnected</div>
+    <pre id="mqttLog" style="background:#0b1220;border:1px solid #334155;border-radius:8px;padding:10px;max-height:180px;overflow:auto;"></pre>
     <video id="remoteVideo" autoplay playsinline controls></video>
   </div>
 
   <script src="/vendor/adapter.js"></script>
   <script src="/vendor/janus.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

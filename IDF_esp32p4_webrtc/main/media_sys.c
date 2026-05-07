@@ -15,16 +15,18 @@
 #include "av_render.h"
 #include "av_render_default.h"
 #include "common.h"
-#include "esp_audio_dec_default.h"
-#include "esp_audio_enc_default.h"
 #include "esp_capture_defaults.h"
 #include "esp_capture_sink.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "esp_video_dec_default.h"
-#include "esp_video_enc_default.h"
 #include "media_lib_os.h"
 #include "settings.h"
+
+/* Register default codec implementations from external components. */
+int esp_video_enc_register_default(void);
+int esp_audio_enc_register_default(void);
+int esp_video_dec_register_default(void);
+int esp_audio_dec_register_default(void);
 
 #define TAG "MEDIA_SYS"
 
