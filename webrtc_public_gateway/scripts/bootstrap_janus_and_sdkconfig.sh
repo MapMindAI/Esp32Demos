@@ -69,6 +69,8 @@ if [[ -z "${MQTT_BROKER_URI}" ]]; then
   MQTT_BROKER_URI="mqtt://${_host}:1883"
 fi
 
+SIGNAL_HOST="$(echo "${SIGNAL_URL}" | sed -E 's#^[a-zA-Z]+://([^/:]+).*$#\1#')"
+
 for f in "$JANUS_CFG" "$VIDEOROOM_CFG" "$ENV_FILE" "$SDKCONFIG"; do
   if [[ ! -f "$f" ]]; then
     echo "Missing file: $f" >&2
@@ -123,6 +125,15 @@ fi
 
 # janus.jcfg
 sed -i -E "s#^([[:space:]]*admin_secret[[:space:]]*=[[:space:]]*\").*(\".*)#\1${ADMIN_SECRET}\2#g" "$JANUS_CFG"
+# Set nat_1_1_mapping from signal-url host.
+if grep -qE '^[[:space:]]*nat_1_1_mapping[[:space:]]*=' "$JANUS_CFG"; then
+  sed -i -E "s#^[[:space:]]*nat_1_1_mapping[[:space:]]*=.*#  nat_1_1_mapping = \"${SIGNAL_HOST}\"#g" "$JANUS_CFG"
+elif grep -qE '^[[:space:]]*#[[:space:]]*nat_1_1_mapping[[:space:]]*=' "$JANUS_CFG"; then
+  sed -i -E "s|^[[:space:]]*#[[:space:]]*nat_1_1_mapping[[:space:]]*=.*|  nat_1_1_mapping = \"${SIGNAL_HOST}\"|g" "$JANUS_CFG"
+else
+  # Fallback: inject into nat block.
+  sed -i -E "/^nat:[[:space:]]*\\{/a\\  nat_1_1_mapping = \"${SIGNAL_HOST}\"" "$JANUS_CFG"
+fi
 
 # janus.plugin.videoroom.jcfg
 sed -i -E "0,/^room-[0-9]+:[[:space:]]*\\{/{s/^room-[0-9]+:[[:space:]]*\\{/room-${ROOM_ID}: {/}" "$VIDEOROOM_CFG"
@@ -153,6 +164,7 @@ Generated values:
   ROOM_PIN=${ROOM_PIN}
   ROOM_SECRET=${ROOM_SECRET}
   SIGNAL_URL=${SIGNAL_URL}
+  NAT_1_1_MAPPING=${SIGNAL_HOST}
   MQTT_BROKER_URI=${MQTT_BROKER_URI}
 
 Backup mode: $([[ "$ENABLE_BACKUP" == "1" ]] && echo "enabled" || echo "disabled")

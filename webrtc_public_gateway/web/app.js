@@ -37,6 +37,10 @@
   }
 
   const janusServer = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/janus-ws`;
+  const defaultMqttScheme = location.protocol === 'https:' ? 'wss' : 'ws';
+  if (!mqttWsUrlEl.value.trim()) {
+    mqttWsUrlEl.value = `${defaultMqttScheme}://${location.hostname}:9001`;
+  }
 
   async function destroySession() {
     if (statsTimer) {
