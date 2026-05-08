@@ -32,7 +32,9 @@
 static const char* TAG = "Webrtc_Test";
 static atomic_llong s_last_heartbeat_ms = 0;
 static bool s_webrtc_state_last = false;
+static int64_t s_last_status_pub_ms = 0;
 #define WEBRTC_HEARTBEAT_TIMEOUT_MS (15000)
+#define WEBRTC_STATUS_PUB_PERIOD_MS (5000)
 
 #define RUN_ASYNC(name, body)       \
   void run_async##name(void* arg) { \
@@ -232,22 +234,42 @@ static void mqtt_control_cmd_handler(const char *cmd, void *ctx) {
   }
 }
 
+static void publish_webrtc_status(const char *state, const char *reason) {
+  char payload[160];
+  bool running = webrtc_is_running();
+  bool connected = webrtc_is_connected();
+  if (reason && reason[0]) {
+    snprintf(payload, sizeof(payload),
+             "{\"webrtc\":\"%s\",\"running\":%s,\"connected\":%s,\"reason\":\"%s\"}",
+             state, running ? "true" : "false", connected ? "true" : "false", reason);
+  } else {
+    snprintf(payload, sizeof(payload),
+             "{\"webrtc\":\"%s\",\"running\":%s,\"connected\":%s}",
+             state, running ? "true" : "false", connected ? "true" : "false");
+  }
+  mqtt_bridge_publish_json("status", payload);
+}
+
 static void mqtt_control_loop(void) {
   int64_t now_ms = esp_timer_get_time() / 1000;
   bool connected = webrtc_is_connected();
   if (connected != s_webrtc_state_last) {
     s_webrtc_state_last = connected;
     if (connected) {
-      mqtt_bridge_publish_json("status", "{\"webrtc\":\"ready\"}");
+      publish_webrtc_status("ready", NULL);
     } else {
-      mqtt_bridge_publish_json("status", "{\"webrtc\":\"stopped\"}");
+      publish_webrtc_status("stopped", NULL);
     }
+  }
+  if (mqtt_bridge_is_connected() && now_ms > s_last_status_pub_ms + WEBRTC_STATUS_PUB_PERIOD_MS) {
+    s_last_status_pub_ms = now_ms;
+    publish_webrtc_status(connected ? "ready" : (webrtc_is_running() ? "connecting" : "idle"), NULL);
   }
   int64_t hb_ms = atomic_load(&s_last_heartbeat_ms);
   if (webrtc_is_running() && hb_ms > 0 && now_ms - hb_ms > WEBRTC_HEARTBEAT_TIMEOUT_MS) {
     ESP_LOGW(TAG, "Heartbeat timeout, stopping WebRTC to save power");
     stop_webrtc();
-    mqtt_bridge_publish_json("status", "{\"webrtc\":\"stopped\",\"reason\":\"heartbeat_timeout\"}");
+    publish_webrtc_status("stopped", "heartbeat_timeout");
     atomic_store(&s_last_heartbeat_ms, 0);
   }
 }
@@ -256,13 +278,14 @@ static int network_event_handler(bool connected) {
   if (connected) {
     mqtt_bridge_set_cmd_handler(mqtt_control_cmd_handler, NULL);
     mqtt_bridge_start();
-    mqtt_bridge_publish_json("status", "{\"webrtc\":\"idle\"}");
+    publish_webrtc_status("idle", NULL);
     ESP_LOGI(TAG, "MQTT control ready at %s", get_network_ip());
     // sctp_show_details(true);
   } else {
     mqtt_bridge_stop();
     stop_webrtc();
     atomic_store(&s_last_heartbeat_ms, 0);
+    s_last_status_pub_ms = 0;
   }
   return 0;
 }

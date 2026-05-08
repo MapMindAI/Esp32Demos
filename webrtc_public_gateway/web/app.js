@@ -316,6 +316,9 @@
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
       }
+      if (janus) {
+        destroySession();
+      }
     });
     mqttClient.on('error', (err) => {
       appendMqttLog(`Error: ${err.message || err}`);
