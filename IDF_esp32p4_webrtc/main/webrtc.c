@@ -164,10 +164,10 @@ uint32_t current_velocity_ = 125;
 uint32_t servo_velocity_ = 60;
 
 static bool is_cmd(const char* cmd, const char* exact, const char* legacy) {
-  if (SAME_STR(cmd, exact)) {
+  if (exact && strcmp(cmd, exact) == 0) {
     return true;
   }
-  return legacy && SAME_STR(cmd, legacy);
+  return legacy && strcmp(cmd, legacy) == 0;
 }
 
 static bool ProcessServoCommand(const char* cmd) {
