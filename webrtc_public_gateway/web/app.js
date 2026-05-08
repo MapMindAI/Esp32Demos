@@ -38,6 +38,8 @@
   const servoLeftBtn = document.getElementById('servoLeftBtn');
   const servoRightBtn = document.getElementById('servoRightBtn');
   const servoStopBtn = document.getElementById('servoStopBtn');
+  const servoStepSlider = document.getElementById('servoStepSlider');
+  const servoStepValue = document.getElementById('servoStepValue');
 
   const setStatus = (msg) => { statusEl.textContent = msg; };
   const setMqttStatus = (msg) => { mqttStatusEl.textContent = msg; };
@@ -299,6 +301,8 @@
       servoLeftBtn.disabled = false;
       servoRightBtn.disabled = false;
       servoStopBtn.disabled = false;
+      servoStepSlider.disabled = false;
+      mqttPublishCommand(`SERVO_STEP:${servoStepSlider.value}`);
       mqttClient.subscribe(memTopic, { qos: 0 }, (err) => {
         if (err) {
           appendMqttLog(`Subscribe failed: ${err.message || err}`);
@@ -341,6 +345,7 @@
       servoLeftBtn.disabled = true;
       servoRightBtn.disabled = true;
       servoStopBtn.disabled = true;
+      servoStepSlider.disabled = true;
       pendingWebrtcOpen = false;
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
@@ -396,6 +401,7 @@
     servoLeftBtn.disabled = true;
     servoRightBtn.disabled = true;
     servoStopBtn.disabled = true;
+    servoStepSlider.disabled = true;
     setMqttStatus('MQTT: disconnected');
   }
 
@@ -579,6 +585,13 @@
   });
   roomIdEl.addEventListener('input', syncMqttFromRoom);
   roomPinEl.addEventListener('input', syncMqttFromRoom);
+  servoStepValue.textContent = servoStepSlider.value;
+  servoStepSlider.addEventListener('input', () => {
+    servoStepValue.textContent = servoStepSlider.value;
+  });
+  servoStepSlider.addEventListener('change', () => {
+    mqttPublishCommand(`SERVO_STEP:${servoStepSlider.value}`);
+  });
   bindControlButton(robotUpBtn, 'ROBOT_UP', 'ROBOT_STOP');
   bindControlButton(robotDownBtn, 'ROBOT_DOWN', 'ROBOT_STOP');
   bindControlButton(robotLeftBtn, 'ROBOT_LEFT', 'ROBOT_STOP');

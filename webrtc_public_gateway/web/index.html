@@ -20,7 +20,7 @@
     .hidden { display: none !important; }
     details { border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
     summary { cursor: pointer; color: #cbd5e1; }
-    .overlay-controls { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 3; pointer-events: none; }
+    .overlay-controls { position: absolute; left: 0; right: 0; bottom: 56px; z-index: 3; pointer-events: none; }
     .control-panel { position: absolute; pointer-events: auto; }
     .control-panel.left { left: 12px; bottom: 0; }
     .control-panel.right { right: 12px; bottom: 0; }
@@ -66,6 +66,11 @@
             <span></span>
             <button id="servoDownBtn" disabled>Down</button>
             <span></span>
+          </div>
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <span class="hint" style="color:#e2e8f0;">Step</span>
+            <input id="servoStepSlider" type="range" min="0" max="20" value="5" style="width:150px;padding:0;" disabled />
+            <span id="servoStepValue" class="hint" style="min-width:24px;color:#e2e8f0;">5</span>
           </div>
         </div>
       </div>
