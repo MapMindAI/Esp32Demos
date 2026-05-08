@@ -21,7 +21,7 @@ Inbound rules are:
 - TCP `22` (SSH)
 - ICMP enabled
 
-![ali inbound rules](assets/ali_netsetup.png)
+![ali inbound rules](../assets/ali_netsetup.png)
 
 Recommended hardening after validation:
 

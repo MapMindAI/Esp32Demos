@@ -8,6 +8,7 @@ This repo is an end-to-end ESP-IDF demo workspace for building a small remote-co
 - CAN bus command forwarding
 - ESP32-C3 CAN receiver and dual-servo controller
 - Local Docker gateway stack based on Janus, Caddy, and Mosquitto
+- [Aliyun ECS Deployment Guide (WebRTC + MQTT Gateway)](webrtc_public_gateway/ALIYUN_ECS_DEPLOYMENT.md)
 
 This repository is intended as a quick development entry point for experimenting with ESP32 WebRTC streaming, web-to-device control, and CAN/servo actuation in one integrated workflow.
 
