@@ -45,5 +45,6 @@ Open:
 
 ## 4) Detailed docs
 
-- Gateway details: `webrtc_public_gateway/README.md`
+- [Gateway details](webrtc_public_gateway/README.md)
 - ESP32 project config/options: `IDF_esp32p4_webrtc/main/Kconfig`
+- [MQTT-Controlled WebRTC Flow](webrtc_public_gateway/MQTT_WEBRTC_CONTROL_FLOW.md)

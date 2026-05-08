@@ -70,6 +70,14 @@ static door_bell_state_t door_bell_state;
 static bool monitor_key;
 static user_data_ch_t user_ch[2];
 static bool data_running = false;
+static bool janus_retry_running = false;
+static bool janus_retry_stop = false;
+static bool webrtc_connected = false;
+int start_webrtc(char* url);
+
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+#define JANUS_RETRY_INTERVAL_MS 5000
+#endif
 
 extern const uint8_t ring_music_start[] asm("_binary_ring_aac_start");
 extern const uint8_t ring_music_end[] asm("_binary_ring_aac_end");
@@ -87,6 +95,48 @@ typedef struct {
 static rtp_transformer_ctx_t sender_transformer_ctx;
 static rtp_transformer_ctx_t receiver_transformer_ctx;
 static bool rtp_transformer_enabled = false;
+
+static void cleanup_webrtc_handle(void) {
+  if (webrtc) {
+    monitor_key = false;
+    esp_webrtc_handle_t handle = webrtc;
+    webrtc = NULL;
+    ESP_LOGI(TAG, "Start to close webrtc %p", handle);
+    esp_webrtc_close(handle);
+    while (data_running) {
+      media_lib_thread_sleep(10);
+    }
+  }
+}
+
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+static void janus_retry_task(void* arg) {
+  janus_retry_running = true;
+  while (!janus_retry_stop) {
+    if (!network_is_connected()) {
+      break;
+    }
+    if (webrtc == NULL) {
+      ESP_LOGW(TAG, "Janus unavailable, retrying WebRTC start...");
+      if (start_webrtc(NULL) == 0) {
+        ESP_LOGI(TAG, "WebRTC reconnect succeeded");
+        break;
+      }
+    }
+    media_lib_thread_sleep(JANUS_RETRY_INTERVAL_MS);
+  }
+  janus_retry_running = false;
+  media_lib_thread_destroy(NULL);
+}
+
+static void schedule_janus_retry(void) {
+  if (janus_retry_stop || janus_retry_running || !network_is_connected()) {
+    return;
+  }
+  media_lib_thread_handle_t retry_thread;
+  media_lib_thread_create_from_scheduler(&retry_thread, "janus_retry", janus_retry_task, NULL);
+}
+#endif
 
 static int play_tone(door_bell_tone_type_t type) {
   door_bell_tone_data_t tone_data[] = {
@@ -452,11 +502,23 @@ static void setup_rtp_transformers(esp_peer_handle_t peer_handle) {
 static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
   if (event->type == ESP_WEBRTC_EVENT_CONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_CONNECTED);
+    webrtc_connected = true;
+    if (webrtc) {
+      esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_STABLE);
+      esp_webrtc_set_audio_bitrate(webrtc, WEBRTC_AUDIO_BITRATE);
+      ESP_LOGI(TAG, "Applied stable bitrate profile: video=%d audio=%d", WEBRTC_VIDEO_BITRATE_STABLE,
+               WEBRTC_AUDIO_BITRATE);
+    }
   } else if (event->type == ESP_WEBRTC_EVENT_CONNECT_FAILED || event->type == ESP_WEBRTC_EVENT_DISCONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_NONE);
+    webrtc_connected = false;
     // Reset transformer contexts
     memset(&sender_transformer_ctx, 0, sizeof(sender_transformer_ctx));
     memset(&receiver_transformer_ctx, 0, sizeof(receiver_transformer_ctx));
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    cleanup_webrtc_handle();
+    schedule_janus_retry();
+#endif
   } else if (event->type == ESP_WEBRTC_EVENT_PAIRED) {
     esp_peer_handle_t peer_handle = NULL;
     esp_webrtc_get_peer_connection(webrtc, &peer_handle);
@@ -510,9 +572,12 @@ int start_webrtc(char* url) {
     ESP_LOGE(TAG, "Wifi not connected yet");
     return -1;
   }
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  janus_retry_stop = false;
+#endif
   if (webrtc) {
-    esp_webrtc_close(webrtc);
-    webrtc = NULL;
+    webrtc_connected = false;
+    cleanup_webrtc_handle();
   }
   monitor_key = true;
   media_lib_thread_handle_t key_thread;
@@ -533,7 +598,7 @@ int start_webrtc(char* url) {
 #endif
 
   esp_peer_default_cfg_t peer_cfg = {
-      .agent_recv_timeout = 500,
+      .agent_recv_timeout = 1200,
   };
   esp_webrtc_cfg_t cfg = {
       .peer_cfg =
@@ -557,7 +622,7 @@ int start_webrtc(char* url) {
                       .height = VIDEO_HEIGHT,
                       .fps = VIDEO_FPS,
                   },
-              .audio_dir = ESP_PEER_MEDIA_DIR_SEND_RECV,
+              .audio_dir = ESP_PEER_MEDIA_DIR_SEND_ONLY,
               .video_dir = ESP_PEER_MEDIA_DIR_SEND_ONLY,
               .on_custom_data = door_bell_on_cmd,
               // Add following data channel callback for more accurate control over data channel
@@ -593,6 +658,10 @@ int start_webrtc(char* url) {
   int ret = esp_webrtc_open(&cfg, &webrtc);
   if (ret != 0) {
     ESP_LOGE(TAG, "Fail to open webrtc");
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    cleanup_webrtc_handle();
+    schedule_janus_retry();
+#endif
     return ret;
   }
   // Set media provider
@@ -605,7 +674,8 @@ int start_webrtc(char* url) {
   // } else {
   //   esp_webrtc_set_video_bitrate(rtc_handle, 300000);  // 300 kbps
   // }
-  esp_webrtc_set_video_bitrate(webrtc, 1000000);
+  esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_START);
+  esp_webrtc_set_audio_bitrate(webrtc, WEBRTC_AUDIO_BITRATE);
 
   // Set event handler
   esp_webrtc_set_event_handler(webrtc, webrtc_event_handler, NULL);
@@ -618,13 +688,19 @@ int start_webrtc(char* url) {
   esp_webrtc_enable_peer_connection(webrtc, false);
 #endif
 
+#if DATA_CHANNEL_STRESS_TEST
   media_lib_thread_handle_t data_thread;
   media_lib_thread_create_from_scheduler(&data_thread, "data", data_thread_hdlr, NULL);
+#endif
 
   // Start webrtc
   ret = esp_webrtc_start(webrtc);
   if (ret != 0) {
     ESP_LOGE(TAG, "Fail to start webrtc");
+    cleanup_webrtc_handle();
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    schedule_janus_retry();
+#endif
   } else {
 #if CONFIG_DOORBELL_SIGNALING_JANUS
     // Ensure pending_connect is cleared after signaling startup.
@@ -642,17 +718,13 @@ void query_webrtc(void) {
 }
 
 int stop_webrtc(void) {
-  if (webrtc) {
-    monitor_key = false;
-    esp_webrtc_handle_t handle = webrtc;
-    webrtc = NULL;
-    ESP_LOGI(TAG, "Start to close webrtc %p", handle);
-
-    esp_webrtc_close(handle);
-    // Wait for data running exit
-    while (data_running) {
-      media_lib_thread_sleep(10);
-    }
-  }
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  janus_retry_stop = true;
+#endif
+  webrtc_connected = false;
+  cleanup_webrtc_handle();
   return 0;
 }
+
+bool webrtc_is_running(void) { return webrtc != NULL; }
+bool webrtc_is_connected(void) { return webrtc_connected; }

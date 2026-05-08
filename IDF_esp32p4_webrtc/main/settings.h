@@ -69,6 +69,13 @@ extern "C" {
  * @brief  Whether enable data channel
  */
 #define DATA_CHANNEL_ENABLED (true)
+/* Disable data-channel stress traffic by default to keep video stable. */
+#define DATA_CHANNEL_STRESS_TEST (false)
+
+/* Conservative WebRTC bitrate profile for higher stability on unstable links. */
+#define WEBRTC_VIDEO_BITRATE_START (450000)
+#define WEBRTC_VIDEO_BITRATE_STABLE (700000)
+#define WEBRTC_AUDIO_BITRATE (20000)
 
 /**
  * @brief MQTT settings for local broker tests

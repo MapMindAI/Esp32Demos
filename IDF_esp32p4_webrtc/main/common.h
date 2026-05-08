@@ -47,6 +47,8 @@ void query_webrtc(void);
  *      - Others  Fail to stop
  */
 int stop_webrtc(void);
+bool webrtc_is_running(void);
+bool webrtc_is_connected(void);
 
 /**
  * @brief  Send command to peer
