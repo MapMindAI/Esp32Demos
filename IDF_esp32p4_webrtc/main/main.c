@@ -231,6 +231,9 @@ static void mqtt_control_cmd_handler(const char *cmd, void *ctx) {
     stop_webrtc();
   } else if (strcmp(cmd, "HEARTBEAT") == 0) {
     atomic_store(&s_last_heartbeat_ms, now_ms);
+  } else {
+    // Forward user control commands (e.g. Up/Down/Left/Right/Stop) to WebRTC app logic.
+    send_cmd((char *)cmd);
   }
 }
 

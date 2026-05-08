@@ -12,7 +12,7 @@
     input, button { padding: 10px; border-radius: 8px; border: 1px solid #475569; background: #0b1220; color: #e2e8f0; }
     button { cursor: pointer; background: #1d4ed8; border-color: #1d4ed8; }
     button:disabled { opacity: .6; cursor: not-allowed; }
-    .video-shell { width: 100%; aspect-ratio: 16 / 9; max-height: 70vh; background: black; border-radius: 8px; overflow: hidden; }
+    .video-shell { width: 100%; aspect-ratio: 16 / 9; max-height: 70vh; background: black; border-radius: 8px; overflow: hidden; position: relative; }
     video { width: 100%; height: 100%; object-fit: contain; background: black; }
     #status { color: #93c5fd; min-height: 20px; margin-top: 10px; }
     .hint { color: #94a3b8; font-size: 13px; }
@@ -20,6 +20,15 @@
     .hidden { display: none !important; }
     details { border: 1px solid #334155; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
     summary { cursor: pointer; color: #cbd5e1; }
+    .overlay-controls { position: absolute; left: 0; right: 0; bottom: 12px; z-index: 3; pointer-events: none; }
+    .control-panel { position: absolute; pointer-events: auto; }
+    .control-panel.left { left: 12px; bottom: 0; }
+    .control-panel.right { right: 12px; bottom: 0; }
+    .control-panel .section-title, .control-panel .hint { display: none; }
+    @media (max-width: 900px) {
+      .control-panel.left { left: 8px; bottom: 0; }
+      .control-panel.right { right: 8px; bottom: 0; }
+    }
   </style>
 </head>
 <body>
@@ -27,6 +36,39 @@
     <h2>ESP32 Doorbell Control Panel</h2>
     <div class="video-shell">
       <video id="remoteVideo" autoplay playsinline controls width="1920" height="1080"></video>
+      <div class="overlay-controls">
+        <div class="control-panel left">
+          <div class="section-title">Robot Control</div>
+          <div class="hint" style="margin-bottom:8px;">Press and hold to move, release to stop.</div>
+          <div style="display:grid;grid-template-columns:72px 72px 72px;grid-template-rows:48px 48px 48px;gap:8px;justify-content:start;align-items:center;">
+            <span></span>
+            <button id="robotUpBtn" disabled>Up</button>
+            <span></span>
+            <button id="robotLeftBtn" disabled>Left</button>
+            <button id="robotStopBtn" disabled>Stop</button>
+            <button id="robotRightBtn" disabled>Right</button>
+            <span></span>
+            <button id="robotDownBtn" disabled>Down</button>
+            <span></span>
+          </div>
+        </div>
+
+        <div class="control-panel right">
+          <div class="section-title">Camera Servo Control</div>
+          <div class="hint" style="margin-bottom:8px;">Press and hold to pan/tilt, release to stop.</div>
+          <div style="display:grid;grid-template-columns:72px 72px 72px;grid-template-rows:48px 48px 48px;gap:8px;justify-content:start;align-items:center;">
+            <span></span>
+            <button id="servoUpBtn" disabled>Up</button>
+            <span></span>
+            <button id="servoLeftBtn" disabled>Left</button>
+            <button id="servoStopBtn" disabled>Stop</button>
+            <button id="servoRightBtn" disabled>Right</button>
+            <span></span>
+            <button id="servoDownBtn" disabled>Down</button>
+            <span></span>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="status">Idle</div>
     <p class="hint">WebRTC is controlled automatically by MQTT open/heartbeat/close commands.</p>
@@ -42,7 +84,6 @@
       <input id="mqttCmdInput" placeholder="Send command string to ESP32" style="flex:1; min-width: 260px;" />
       <button id="mqttSendBtn" disabled>Send MQTT Cmd</button>
     </div>
-
     <details>
       <summary>Advanced Options</summary>
       <div class="row" style="margin-top:10px;">
