@@ -66,6 +66,12 @@ Notes:
 
 ## Server Deployment Steps
 
+or simply :
+
+```
+./scripts/bootstrap_janus_and_sdkconfig.sh --room-id 1234 --signal-url http://192.168.19.25:8080/janus --mqtt-broker-uri mqtt://192.168.19.25:1883
+```
+
 1. Copy env template:
 
 ```bash

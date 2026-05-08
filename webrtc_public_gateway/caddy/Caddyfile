@@ -1,24 +1,3 @@
-{$PUBLIC_FQDN} {
-  encode zstd gzip
-
-  # Static remote viewer client
-  root * /srv/web
-  file_server
-
-  # Janus HTTP API (REST long polling) (host.docker.internal)
-  reverse_proxy /janus* 127.0.0.1:8088
-
-  # Janus WebSocket API
-  reverse_proxy /janus-ws* 127.0.0.1:8188
-
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-    X-Content-Type-Options "nosniff"
-    X-Frame-Options "DENY"
-    Referrer-Policy "strict-origin-when-cross-origin"
-  }
-}
-
 # Local functional testing:
 # open http://localhost:8080 on host.
 :8080 {
