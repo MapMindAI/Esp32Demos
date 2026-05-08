@@ -13,6 +13,14 @@ config DOORBELL_SIGNALING_JANUS
     bool "Remote Janus VideoRoom signaling"
 endchoice
 
+config DOORBELL_MQTT_BROKER_URI
+    string "MQTT broker URI"
+    default "mqtt://your-domain.example:1883"
+    help
+        MQTT broker URI for ESP32 telemetry/command channel.
+        Example:
+        mqtt://your-domain.example:1883
+
 if DOORBELL_SIGNALING_JANUS
 config DOORBELL_JANUS_SIGNAL_URL
     string "Janus API base URL"
