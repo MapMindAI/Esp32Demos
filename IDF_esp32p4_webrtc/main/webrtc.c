@@ -70,6 +70,13 @@ static door_bell_state_t door_bell_state;
 static bool monitor_key;
 static user_data_ch_t user_ch[2];
 static bool data_running = false;
+static bool janus_retry_running = false;
+static bool janus_retry_stop = false;
+int start_webrtc(char* url);
+
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+#define JANUS_RETRY_INTERVAL_MS 5000
+#endif
 
 extern const uint8_t ring_music_start[] asm("_binary_ring_aac_start");
 extern const uint8_t ring_music_end[] asm("_binary_ring_aac_end");
@@ -87,6 +94,48 @@ typedef struct {
 static rtp_transformer_ctx_t sender_transformer_ctx;
 static rtp_transformer_ctx_t receiver_transformer_ctx;
 static bool rtp_transformer_enabled = false;
+
+static void cleanup_webrtc_handle(void) {
+  if (webrtc) {
+    monitor_key = false;
+    esp_webrtc_handle_t handle = webrtc;
+    webrtc = NULL;
+    ESP_LOGI(TAG, "Start to close webrtc %p", handle);
+    esp_webrtc_close(handle);
+    while (data_running) {
+      media_lib_thread_sleep(10);
+    }
+  }
+}
+
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+static void janus_retry_task(void* arg) {
+  janus_retry_running = true;
+  while (!janus_retry_stop) {
+    if (!network_is_connected()) {
+      break;
+    }
+    if (webrtc == NULL) {
+      ESP_LOGW(TAG, "Janus unavailable, retrying WebRTC start...");
+      if (start_webrtc(NULL) == 0) {
+        ESP_LOGI(TAG, "WebRTC reconnect succeeded");
+        break;
+      }
+    }
+    media_lib_thread_sleep(JANUS_RETRY_INTERVAL_MS);
+  }
+  janus_retry_running = false;
+  media_lib_thread_destroy(NULL);
+}
+
+static void schedule_janus_retry(void) {
+  if (janus_retry_stop || janus_retry_running || !network_is_connected()) {
+    return;
+  }
+  media_lib_thread_handle_t retry_thread;
+  media_lib_thread_create_from_scheduler(&retry_thread, "janus_retry", janus_retry_task, NULL);
+}
+#endif
 
 static int play_tone(door_bell_tone_type_t type) {
   door_bell_tone_data_t tone_data[] = {
@@ -457,6 +506,10 @@ static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
     // Reset transformer contexts
     memset(&sender_transformer_ctx, 0, sizeof(sender_transformer_ctx));
     memset(&receiver_transformer_ctx, 0, sizeof(receiver_transformer_ctx));
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    cleanup_webrtc_handle();
+    schedule_janus_retry();
+#endif
   } else if (event->type == ESP_WEBRTC_EVENT_PAIRED) {
     esp_peer_handle_t peer_handle = NULL;
     esp_webrtc_get_peer_connection(webrtc, &peer_handle);
@@ -510,9 +563,11 @@ int start_webrtc(char* url) {
     ESP_LOGE(TAG, "Wifi not connected yet");
     return -1;
   }
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  janus_retry_stop = false;
+#endif
   if (webrtc) {
-    esp_webrtc_close(webrtc);
-    webrtc = NULL;
+    cleanup_webrtc_handle();
   }
   monitor_key = true;
   media_lib_thread_handle_t key_thread;
@@ -593,6 +648,10 @@ int start_webrtc(char* url) {
   int ret = esp_webrtc_open(&cfg, &webrtc);
   if (ret != 0) {
     ESP_LOGE(TAG, "Fail to open webrtc");
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    cleanup_webrtc_handle();
+    schedule_janus_retry();
+#endif
     return ret;
   }
   // Set media provider
@@ -625,6 +684,10 @@ int start_webrtc(char* url) {
   ret = esp_webrtc_start(webrtc);
   if (ret != 0) {
     ESP_LOGE(TAG, "Fail to start webrtc");
+    cleanup_webrtc_handle();
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+    schedule_janus_retry();
+#endif
   } else {
 #if CONFIG_DOORBELL_SIGNALING_JANUS
     // Ensure pending_connect is cleared after signaling startup.
@@ -642,17 +705,9 @@ void query_webrtc(void) {
 }
 
 int stop_webrtc(void) {
-  if (webrtc) {
-    monitor_key = false;
-    esp_webrtc_handle_t handle = webrtc;
-    webrtc = NULL;
-    ESP_LOGI(TAG, "Start to close webrtc %p", handle);
-
-    esp_webrtc_close(handle);
-    // Wait for data running exit
-    while (data_running) {
-      media_lib_thread_sleep(10);
-    }
-  }
+#if CONFIG_DOORBELL_SIGNALING_JANUS
+  janus_retry_stop = true;
+#endif
+  cleanup_webrtc_handle();
   return 0;
 }
