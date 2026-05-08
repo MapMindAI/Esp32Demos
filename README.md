@@ -1,6 +1,17 @@
-# Esp32Demos
+# ESP32-Robot-WebRTC
 
-Quick entrypoint for local development of ESP32 WebRTC, MQTT gateway, and CAN/servo control demos.
+This repo is an end-to-end ESP-IDF demo workspace for building a small remote-controlled robot / device prototype with:
+
+- ESP32-P4 WebRTC video/audio streaming
+- Browser-based control page
+- MQTT command bridge
+- CAN bus command forwarding
+- ESP32-C3 CAN receiver and dual-servo controller
+- Local Docker gateway stack based on Janus, Caddy, and Mosquitto
+
+This repository is intended as a quick development entry point for experimenting with ESP32 WebRTC streaming, web-to-device control, and CAN/servo actuation in one integrated workflow.
+
+![display](assets/display.jpg)
 
 https://github.com/user-attachments/assets/2f8988e1-435c-417a-9031-e2dc0ea89c77
 
@@ -68,7 +79,19 @@ Pin mapping is in:
 6. P4 forwards control commands to CAN.
 7. C3 receives CAN and drives servos.
 
-## 6) Detailed docs
+## 6) Hardware
+
+Recommended hardware setup:
+
+* ESP32-P4 development board with camera/audio support
+* ESP32-C3 development board
+* CAN transceiver modules for the ESP32-P4 and ESP32-C3 sides
+* One or two servos
+* External 5V power supply for servos
+* Common ground between ESP32-C3, servo power, and CAN transceiver
+* Host machine running Docker
+
+## 7) Detailed docs
 
 - [Gateway details](webrtc_public_gateway/README.md)
 - [MQTT-Controlled WebRTC Flow](webrtc_public_gateway/MQTT_WEBRTC_CONTROL_FLOW.md)
