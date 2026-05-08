@@ -7,6 +7,8 @@
   let statsTimer = null;
   let prevVideoBytes = 0;
   let prevStatsTs = 0;
+  let lastVideoRxMs = 0;
+  let videoStalled = false;
   let mqttClient = null;
   let heartbeatTimer = null;
   let pendingWebrtcOpen = false;
@@ -43,6 +45,7 @@
 
   const setStatus = (msg) => { statusEl.textContent = msg; };
   const setMqttStatus = (msg) => { mqttStatusEl.textContent = msg; };
+  const VIDEO_STALL_TIMEOUT_MS = 8000;
 
   function appendMqttLog(line) {
     const ts = new Date().toLocaleTimeString();
@@ -71,6 +74,8 @@
     remoteStream = null;
     prevVideoBytes = 0;
     prevStatsTs = 0;
+    lastVideoRxMs = 0;
+    videoStalled = false;
     videoEl.srcObject = null;
     connectBtn.disabled = false;
     disconnectBtn.disabled = true;
@@ -145,6 +150,8 @@
           remoteStream.addTrack(track);
         }
         videoEl.play().catch(() => {});
+        lastVideoRxMs = Date.now();
+        videoStalled = false;
         setStatus('Streaming from ESP32');
         startConnectionQualityLogs();
       },
@@ -163,6 +170,8 @@
         remoteStream = null;
         prevVideoBytes = 0;
         prevStatsTs = 0;
+        lastVideoRxMs = 0;
+        videoStalled = false;
         subscriberHandle = null;
       },
     });
@@ -197,13 +206,18 @@
 
       let bitrateKbps = 0;
       if (inboundVideo && typeof inboundVideo.bytesReceived === 'number' && typeof inboundVideo.timestamp === 'number') {
+        const prevBytes = prevVideoBytes;
         if (prevStatsTs > 0 && inboundVideo.timestamp > prevStatsTs) {
           const dtSec = (inboundVideo.timestamp - prevStatsTs) / 1000;
-          const dBytes = inboundVideo.bytesReceived - prevVideoBytes;
+          const dBytes = inboundVideo.bytesReceived - prevBytes;
           bitrateKbps = dtSec > 0 ? (dBytes * 8) / dtSec / 1000 : 0;
         }
         prevVideoBytes = inboundVideo.bytesReceived;
         prevStatsTs = inboundVideo.timestamp;
+        if (inboundVideo.bytesReceived > prevBytes) {
+          lastVideoRxMs = Date.now();
+          videoStalled = false;
+        }
       }
 
       const rttMs = selectedPair?.currentRoundTripTime ? Math.round(selectedPair.currentRoundTripTime * 1000) : null;
@@ -216,6 +230,21 @@
       const quality = `${emoji} ICE:${pc.iceConnectionState} RTT:${rttMs ?? '-'}ms Bitrate:${Math.round(bitrateKbps)}kbps FPS:${fps ?? '-'} Jitter:${jitterMs ?? '-'}ms Drop:${dropped ?? '-'} Dec:${decoded ?? '-'}`;
       console.log(`[quality] ${quality}`);
       setStatus(`Streaming from ESP32 | ${quality}`);
+
+      if (!videoStalled && lastVideoRxMs > 0 && (Date.now() - lastVideoRxMs) > VIDEO_STALL_TIMEOUT_MS) {
+        videoStalled = true;
+        const errMsg = `Video stalled: no inbound video for ${Math.round(VIDEO_STALL_TIMEOUT_MS / 1000)}s`;
+        console.error(`[webrtc] ${errMsg}`);
+        appendMqttLog(`ERROR ${errMsg}`);
+        const cmdTopic = mqttCmdTopicEl.value.trim();
+        if (mqttClient && mqttClient.connected && cmdTopic) {
+          mqttClient.publish(cmdTopic, 'CLOSE_WEBRTC');
+          appendMqttLog(`TX ${cmdTopic}: CLOSE_WEBRTC`);
+        }
+        await destroySession();
+        setStatus(`${errMsg}; WebRTC closed.`);
+        return;
+      }
     } catch (err) {
       console.log(`[quality] stats error: ${err}`);
     }

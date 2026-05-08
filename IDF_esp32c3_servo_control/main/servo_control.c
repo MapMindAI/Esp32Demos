@@ -27,12 +27,14 @@ typedef struct {
   int lr_angle;
   int ud_angle;
   bool initialized;
+  bool output_enabled;
 } servo_state_t;
 
 static servo_state_t s_servo = {
     .lr_angle = SERVO_INIT_ANGLE,
     .ud_angle = SERVO_INIT_ANGLE,
     .initialized = false,
+    .output_enabled = false,
 };
 
 static inline int signed_step(int step, bool invert) {
@@ -57,6 +59,23 @@ static uint32_t angle_to_duty(int angle) {
 static void set_servo_angle(ledc_channel_t channel, int angle) {
   ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, channel, angle_to_duty(angle)));
   ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, channel));
+}
+
+static void set_servo_output_enabled(bool enabled) {
+  if (enabled == s_servo.output_enabled) {
+    return;
+  }
+  if (enabled) {
+    set_servo_angle(LEDC_CHANNEL_0, s_servo.lr_angle);
+    set_servo_angle(LEDC_CHANNEL_1, s_servo.ud_angle);
+    s_servo.output_enabled = true;
+    ESP_LOGI(TAG, "Servo PWM output enabled");
+    return;
+  }
+  ESP_ERROR_CHECK(ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0));
+  ESP_ERROR_CHECK(ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, 0));
+  s_servo.output_enabled = false;
+  ESP_LOGI(TAG, "Servo PWM output disabled for idle power save");
 }
 
 static int decode_step(const uint8_t* data, int dlc) {
@@ -105,8 +124,10 @@ void servo_control_init(gpio_num_t pin_left_right, gpio_num_t pin_up_down) {
   ESP_ERROR_CHECK(ledc_channel_config(&ch_lr));
   ESP_ERROR_CHECK(ledc_channel_config(&ch_ud));
 
-  set_servo_angle(LEDC_CHANNEL_0, s_servo.lr_angle);
-  set_servo_angle(LEDC_CHANNEL_1, s_servo.ud_angle);
+  set_servo_output_enabled(true);
+#if SERVO_POWER_SAVE_WHEN_IDLE
+  set_servo_output_enabled(false);
+#endif
   s_servo.initialized = true;
   ESP_LOGI(TAG, "Servo PWM init: LR pin=%d, UD pin=%d, inv_lr=%d, inv_ud=%d",
            pin_left_right, pin_up_down, SERVO_LR_INVERT, SERVO_UD_INVERT);
@@ -122,23 +143,30 @@ void servo_control_canbus_message_handler(int dlc, const uint8_t* data) {
 
   switch (cmd) {
     case CMD_SERVO_UP:
+      set_servo_output_enabled(true);
       s_servo.ud_angle += signed_step(step, SERVO_UD_INVERT);
       changed = true;
       break;
     case CMD_SERVO_DOWN:
+      set_servo_output_enabled(true);
       s_servo.ud_angle -= signed_step(step, SERVO_UD_INVERT);
       changed = true;
       break;
     case CMD_SERVO_LEFT:
+      set_servo_output_enabled(true);
       s_servo.lr_angle -= signed_step(step, SERVO_LR_INVERT);
       changed = true;
       break;
     case CMD_SERVO_RIGHT:
+      set_servo_output_enabled(true);
       s_servo.lr_angle += signed_step(step, SERVO_LR_INVERT);
       changed = true;
       break;
     case CMD_SERVO_STOP:
       ESP_LOGI(TAG, "SERVO_STOP");
+#if SERVO_POWER_SAVE_WHEN_IDLE
+      set_servo_output_enabled(false);
+#endif
       return;
     default:
       return;
