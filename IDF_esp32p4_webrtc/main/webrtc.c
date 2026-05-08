@@ -17,6 +17,7 @@
 #include "esp_webrtc.h"
 #include "esp_webrtc_defaults.h"
 #include "media_lib_os.h"
+#include "mqtt_bridge.h"
 #include "robot_canbus.h"
 #if CONFIG_DOORBELL_SIGNALING_LOCAL_HTTP
 #include "webrtc_http_server.h"
@@ -116,11 +117,17 @@ static void janus_retry_task(void* arg) {
       break;
     }
     if (webrtc == NULL) {
+      /* Keep MQTT/sockets quiet while Janus is unavailable. */
+      mqtt_bridge_stop();
       ESP_LOGW(TAG, "Janus unavailable, retrying WebRTC start...");
+      /* Retry MQTT before reconnect attempt, in case broker is same server. */
+      mqtt_bridge_start();
       if (start_webrtc(NULL) == 0) {
         ESP_LOGI(TAG, "WebRTC reconnect succeeded");
         break;
       }
+      /* Start failed again: stop MQTT until next retry cycle. */
+      mqtt_bridge_stop();
     }
     media_lib_thread_sleep(JANUS_RETRY_INTERVAL_MS);
   }
@@ -501,12 +508,14 @@ static void setup_rtp_transformers(esp_peer_handle_t peer_handle) {
 static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
   if (event->type == ESP_WEBRTC_EVENT_CONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_CONNECTED);
+    mqtt_bridge_start();
   } else if (event->type == ESP_WEBRTC_EVENT_CONNECT_FAILED || event->type == ESP_WEBRTC_EVENT_DISCONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_NONE);
     // Reset transformer contexts
     memset(&sender_transformer_ctx, 0, sizeof(sender_transformer_ctx));
     memset(&receiver_transformer_ctx, 0, sizeof(receiver_transformer_ctx));
 #if CONFIG_DOORBELL_SIGNALING_JANUS
+    mqtt_bridge_stop();
     cleanup_webrtc_handle();
     schedule_janus_retry();
 #endif
