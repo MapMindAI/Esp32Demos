@@ -93,6 +93,7 @@ Recommended hardware setup:
 
 ## 7) Detailed docs
 
+- [Aliyun ECS Deployment Guide (WebRTC + MQTT Gateway)](webrtc_public_gateway/ALIYUN_ECS_DEPLOYMENT.md)
 - [Gateway details](webrtc_public_gateway/README.md)
 - [MQTT-Controlled WebRTC Flow](webrtc_public_gateway/MQTT_WEBRTC_CONTROL_FLOW.md)
 - ESP32-P4 project config/options: `IDF_esp32p4_webrtc/main/Kconfig`
