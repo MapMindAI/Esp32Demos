@@ -45,15 +45,22 @@ Commands sent to `ROOM_ID/command`:
 
 - If WebRTC is running and no heartbeat is received for `WEBRTC_HEARTBEAT_TIMEOUT_MS` (currently 15s):
   - stop WebRTC.
-  - publish status: `{"webrtc":"stopped","reason":"heartbeat_timeout"}`.
+  - publish status including reason: `{"webrtc":"stopped","running":false,"connected":false,"reason":"heartbeat_timeout"}`.
 
 ### Status publish
 
 ESP32 publishes status on `ROOM_ID/status`:
 
-- `{"webrtc":"idle"}` after MQTT control initializes.
-- `{"webrtc":"ready"}` when WebRTC connected.
-- `{"webrtc":"stopped"}` when WebRTC disconnects/stops.
+- `{"webrtc":"idle","running":false,"connected":false}` after MQTT control initializes.
+- `{"webrtc":"connecting","running":true,"connected":false}` while WebRTC is opening.
+- `{"webrtc":"ready","running":true,"connected":true}` when WebRTC connected.
+- `{"webrtc":"stopped","running":false,"connected":false}` when WebRTC disconnects/stops.
+
+Status is published:
+
+- on state transition (connected/disconnected)
+- periodically every 5s while MQTT is connected (state snapshot)
+- on heartbeat-timeout stop with `reason`
 
 ## Web Client Logic
 
@@ -62,13 +69,18 @@ Expected sequence:
 1. Connect MQTT.
 2. Send `OPEN_WEBRTC`.
 3. Start sending `HEARTBEAT` every 3s.
-4. Wait for `ROOM_ID/status` with `{"webrtc":"ready"}`.
+4. Wait for `ROOM_ID/status` with `{"webrtc":"ready", ...}`.
 5. Connect Janus/WebRTC viewer.
 
 On client disconnect:
 
 - Send `CLOSE_WEBRTC`.
 - Stop heartbeat timer.
+
+On MQTT disconnect:
+
+- Web client automatically tears down Janus/WebRTC session (`destroySession()`).
+- This prevents stale WebRTC session if control channel is lost.
 
 ## Key Files
 
