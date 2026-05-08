@@ -508,6 +508,12 @@ static void setup_rtp_transformers(esp_peer_handle_t peer_handle) {
 static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
   if (event->type == ESP_WEBRTC_EVENT_CONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_CONNECTED);
+    if (webrtc) {
+      esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_STABLE);
+      esp_webrtc_set_audio_bitrate(webrtc, WEBRTC_AUDIO_BITRATE);
+      ESP_LOGI(TAG, "Applied stable bitrate profile: video=%d audio=%d", WEBRTC_VIDEO_BITRATE_STABLE,
+               WEBRTC_AUDIO_BITRATE);
+    }
     mqtt_bridge_start();
   } else if (event->type == ESP_WEBRTC_EVENT_CONNECT_FAILED || event->type == ESP_WEBRTC_EVENT_DISCONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_NONE);
@@ -597,7 +603,7 @@ int start_webrtc(char* url) {
 #endif
 
   esp_peer_default_cfg_t peer_cfg = {
-      .agent_recv_timeout = 500,
+      .agent_recv_timeout = 1200,
   };
   esp_webrtc_cfg_t cfg = {
       .peer_cfg =
@@ -621,7 +627,7 @@ int start_webrtc(char* url) {
                       .height = VIDEO_HEIGHT,
                       .fps = VIDEO_FPS,
                   },
-              .audio_dir = ESP_PEER_MEDIA_DIR_SEND_RECV,
+              .audio_dir = ESP_PEER_MEDIA_DIR_SEND_ONLY,
               .video_dir = ESP_PEER_MEDIA_DIR_SEND_ONLY,
               .on_custom_data = door_bell_on_cmd,
               // Add following data channel callback for more accurate control over data channel
@@ -673,7 +679,8 @@ int start_webrtc(char* url) {
   // } else {
   //   esp_webrtc_set_video_bitrate(rtc_handle, 300000);  // 300 kbps
   // }
-  esp_webrtc_set_video_bitrate(webrtc, 1000000);
+  esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_START);
+  esp_webrtc_set_audio_bitrate(webrtc, WEBRTC_AUDIO_BITRATE);
 
   // Set event handler
   esp_webrtc_set_event_handler(webrtc, webrtc_event_handler, NULL);
@@ -686,8 +693,10 @@ int start_webrtc(char* url) {
   esp_webrtc_enable_peer_connection(webrtc, false);
 #endif
 
+#if DATA_CHANNEL_STRESS_TEST
   media_lib_thread_handle_t data_thread;
   media_lib_thread_create_from_scheduler(&data_thread, "data", data_thread_hdlr, NULL);
+#endif
 
   // Start webrtc
   ret = esp_webrtc_start(webrtc);
