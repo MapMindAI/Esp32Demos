@@ -8,6 +8,8 @@
   let prevVideoBytes = 0;
   let prevStatsTs = 0;
   let mqttClient = null;
+  let heartbeatTimer = null;
+  let pendingWebrtcOpen = false;
 
   const statusEl = document.getElementById('status');
   const videoEl = document.getElementById('remoteVideo');
@@ -254,6 +256,7 @@
     const password = mqttPasswordEl.value.trim() || roomPin;
     const memTopic = mqttMemTopicEl.value.trim() || `${roomIdStr}/memory`;
     const cmdTopic = mqttCmdTopicEl.value.trim() || `${roomIdStr}/command`;
+    const statusTopic = `${roomIdStr}/status`;
     if (!wsUrl || !memTopic || !cmdTopic || !password) {
       setMqttStatus('MQTT: URL/topic/password is empty');
       return;
@@ -272,7 +275,7 @@
     appendMqttLog(`Connecting ${wsUrl}`);
 
     mqttClient.on('connect', () => {
-      setMqttStatus(`MQTT: connected, subscribed ${memTopic}`);
+      setMqttStatus(`MQTT: connected, subscribed ${memTopic}, ${statusTopic}`);
       mqttConnectBtn.disabled = true;
       mqttDisconnectBtn.disabled = false;
       mqttSendBtn.disabled = false;
@@ -283,6 +286,24 @@
           appendMqttLog(`Subscribed: ${memTopic}`);
         }
       });
+      mqttClient.subscribe(statusTopic, { qos: 0 }, (err) => {
+        if (err) {
+          appendMqttLog(`Subscribe failed: ${err.message || err}`);
+        } else {
+          appendMqttLog(`Subscribed: ${statusTopic}`);
+        }
+      });
+      pendingWebrtcOpen = true;
+      mqttClient.publish(cmdTopic, 'OPEN_WEBRTC');
+      appendMqttLog(`TX ${cmdTopic}: OPEN_WEBRTC`);
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+      }
+      heartbeatTimer = setInterval(() => {
+        if (mqttClient && mqttClient.connected) {
+          mqttClient.publish(cmdTopic, 'HEARTBEAT');
+        }
+      }, 3000);
     });
     mqttClient.on('reconnect', () => setMqttStatus('MQTT: reconnecting...'));
     mqttClient.on('close', () => {
@@ -290,6 +311,11 @@
       mqttConnectBtn.disabled = false;
       mqttDisconnectBtn.disabled = true;
       mqttSendBtn.disabled = true;
+      pendingWebrtcOpen = false;
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
     });
     mqttClient.on('error', (err) => {
       appendMqttLog(`Error: ${err.message || err}`);
@@ -297,10 +323,29 @@
     mqttClient.on('message', (topic, payload) => {
       const text = payload ? payload.toString() : '';
       appendMqttLog(`RX ${topic}: ${text}`);
+      try {
+        const msg = JSON.parse(text);
+        if (topic.endsWith('/status') && msg.webrtc === 'ready' && pendingWebrtcOpen) {
+          pendingWebrtcOpen = false;
+          if (!janus) {
+            connect();
+          }
+        }
+      } catch (_e) {
+      }
     });
   }
 
   function mqttDisconnect() {
+    const cmdTopic = mqttCmdTopicEl.value.trim();
+    if (mqttClient && mqttClient.connected && cmdTopic) {
+      mqttClient.publish(cmdTopic, 'CLOSE_WEBRTC');
+      appendMqttLog(`TX ${cmdTopic}: CLOSE_WEBRTC`);
+    }
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
     if (mqttClient) {
       mqttClient.end(true);
       mqttClient = null;
@@ -436,6 +481,11 @@
 
   connectBtn.addEventListener('click', connect);
   disconnectBtn.addEventListener('click', async () => {
+    const cmdTopic = mqttCmdTopicEl.value.trim();
+    if (mqttClient && mqttClient.connected && cmdTopic) {
+      mqttClient.publish(cmdTopic, 'CLOSE_WEBRTC');
+      appendMqttLog(`TX ${cmdTopic}: CLOSE_WEBRTC`);
+    }
     await destroySession();
     setStatus('Disconnected.');
   });

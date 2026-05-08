@@ -15,6 +15,16 @@ static esp_mqtt_client_handle_t s_client;
 static TaskHandle_t s_pub_task;
 static bool s_connected;
 static bool s_started;
+static mqtt_bridge_cmd_handler_t s_cmd_handler;
+static void *s_cmd_ctx;
+
+static int publish_raw(const char *topic, const char *payload)
+{
+  if (!s_connected || !s_client || !topic || !payload) {
+    return -1;
+  }
+  return esp_mqtt_client_publish(s_client, topic, payload, 0, 0, 0);
+}
 
 static void mqtt_pub_task(void *arg)
 {
@@ -56,6 +66,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
       memcpy(cmd, event->data, copy_len);
       cmd[copy_len] = '\0';
       ESP_LOGI(TAG, "MQTT command received: %s", cmd);
+      if (s_cmd_handler) {
+        s_cmd_handler(cmd, s_cmd_ctx);
+      }
     }
   } else if (event_id == MQTT_EVENT_ERROR) {
     ESP_LOGE(TAG, "MQTT error event");
@@ -100,4 +113,25 @@ void mqtt_bridge_stop(void)
   }
   s_pub_task = NULL;
   ESP_LOGI(TAG, "MQTT bridge stopped");
+}
+
+void mqtt_bridge_set_cmd_handler(mqtt_bridge_cmd_handler_t handler, void *ctx)
+{
+  s_cmd_handler = handler;
+  s_cmd_ctx = ctx;
+}
+
+int mqtt_bridge_publish_json(const char *topic_suffix, const char *json)
+{
+  if (!topic_suffix || !json) {
+    return -1;
+  }
+  char topic[128];
+  snprintf(topic, sizeof(topic), "%s/%s", MQTT_USERNAME, topic_suffix);
+  return publish_raw(topic, json);
+}
+
+bool mqtt_bridge_is_connected(void)
+{
+  return s_connected;
 }

@@ -17,7 +17,6 @@
 #include "esp_webrtc.h"
 #include "esp_webrtc_defaults.h"
 #include "media_lib_os.h"
-#include "mqtt_bridge.h"
 #include "robot_canbus.h"
 #if CONFIG_DOORBELL_SIGNALING_LOCAL_HTTP
 #include "webrtc_http_server.h"
@@ -73,6 +72,7 @@ static user_data_ch_t user_ch[2];
 static bool data_running = false;
 static bool janus_retry_running = false;
 static bool janus_retry_stop = false;
+static bool webrtc_connected = false;
 int start_webrtc(char* url);
 
 #if CONFIG_DOORBELL_SIGNALING_JANUS
@@ -117,17 +117,11 @@ static void janus_retry_task(void* arg) {
       break;
     }
     if (webrtc == NULL) {
-      /* Keep MQTT/sockets quiet while Janus is unavailable. */
-      mqtt_bridge_stop();
       ESP_LOGW(TAG, "Janus unavailable, retrying WebRTC start...");
-      /* Retry MQTT before reconnect attempt, in case broker is same server. */
-      mqtt_bridge_start();
       if (start_webrtc(NULL) == 0) {
         ESP_LOGI(TAG, "WebRTC reconnect succeeded");
         break;
       }
-      /* Start failed again: stop MQTT until next retry cycle. */
-      mqtt_bridge_stop();
     }
     media_lib_thread_sleep(JANUS_RETRY_INTERVAL_MS);
   }
@@ -508,20 +502,20 @@ static void setup_rtp_transformers(esp_peer_handle_t peer_handle) {
 static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
   if (event->type == ESP_WEBRTC_EVENT_CONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_CONNECTED);
+    webrtc_connected = true;
     if (webrtc) {
       esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_STABLE);
       esp_webrtc_set_audio_bitrate(webrtc, WEBRTC_AUDIO_BITRATE);
       ESP_LOGI(TAG, "Applied stable bitrate profile: video=%d audio=%d", WEBRTC_VIDEO_BITRATE_STABLE,
                WEBRTC_AUDIO_BITRATE);
     }
-    mqtt_bridge_start();
   } else if (event->type == ESP_WEBRTC_EVENT_CONNECT_FAILED || event->type == ESP_WEBRTC_EVENT_DISCONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_NONE);
+    webrtc_connected = false;
     // Reset transformer contexts
     memset(&sender_transformer_ctx, 0, sizeof(sender_transformer_ctx));
     memset(&receiver_transformer_ctx, 0, sizeof(receiver_transformer_ctx));
 #if CONFIG_DOORBELL_SIGNALING_JANUS
-    mqtt_bridge_stop();
     cleanup_webrtc_handle();
     schedule_janus_retry();
 #endif
@@ -582,6 +576,7 @@ int start_webrtc(char* url) {
   janus_retry_stop = false;
 #endif
   if (webrtc) {
+    webrtc_connected = false;
     cleanup_webrtc_handle();
   }
   monitor_key = true;
@@ -726,6 +721,10 @@ int stop_webrtc(void) {
 #if CONFIG_DOORBELL_SIGNALING_JANUS
   janus_retry_stop = true;
 #endif
+  webrtc_connected = false;
   cleanup_webrtc_handle();
   return 0;
 }
+
+bool webrtc_is_running(void) { return webrtc != NULL; }
+bool webrtc_is_connected(void) { return webrtc_connected; }

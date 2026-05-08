@@ -12,6 +12,8 @@
 #include <esp_system.h>
 #include <esp_wifi.h>
 #include <nvs_flash.h>
+#include <stdatomic.h>
+#include <string.h>
 #include <sys/param.h>
 #include "common.h"
 #include "esp_capture.h"
@@ -28,6 +30,9 @@
 #include "webrtc_utils_time.h"
 
 static const char* TAG = "Webrtc_Test";
+static atomic_llong s_last_heartbeat_ms = 0;
+static bool s_webrtc_state_last = false;
+#define WEBRTC_HEARTBEAT_TIMEOUT_MS (15000)
 
 #define RUN_ASYNC(name, body)       \
   void run_async##name(void* arg) { \
@@ -208,18 +213,56 @@ static char* get_network_ip(void) {
 
 void sctp_show_details(bool enable);
 
+static void mqtt_control_cmd_handler(const char *cmd, void *ctx) {
+  if (!cmd) {
+    return;
+  }
+  int64_t now_ms = esp_timer_get_time() / 1000;
+  if (strcmp(cmd, "OPEN_WEBRTC") == 0) {
+    atomic_store(&s_last_heartbeat_ms, now_ms);
+    if (!webrtc_is_running()) {
+      ESP_LOGI(TAG, "MQTT command: OPEN_WEBRTC");
+      start_webrtc(NULL);
+    }
+  } else if (strcmp(cmd, "CLOSE_WEBRTC") == 0) {
+    ESP_LOGI(TAG, "MQTT command: CLOSE_WEBRTC");
+    stop_webrtc();
+  } else if (strcmp(cmd, "HEARTBEAT") == 0) {
+    atomic_store(&s_last_heartbeat_ms, now_ms);
+  }
+}
+
+static void mqtt_control_loop(void) {
+  int64_t now_ms = esp_timer_get_time() / 1000;
+  bool connected = webrtc_is_connected();
+  if (connected != s_webrtc_state_last) {
+    s_webrtc_state_last = connected;
+    if (connected) {
+      mqtt_bridge_publish_json("status", "{\"webrtc\":\"ready\"}");
+    } else {
+      mqtt_bridge_publish_json("status", "{\"webrtc\":\"stopped\"}");
+    }
+  }
+  int64_t hb_ms = atomic_load(&s_last_heartbeat_ms);
+  if (webrtc_is_running() && hb_ms > 0 && now_ms - hb_ms > WEBRTC_HEARTBEAT_TIMEOUT_MS) {
+    ESP_LOGW(TAG, "Heartbeat timeout, stopping WebRTC to save power");
+    stop_webrtc();
+    mqtt_bridge_publish_json("status", "{\"webrtc\":\"stopped\",\"reason\":\"heartbeat_timeout\"}");
+    atomic_store(&s_last_heartbeat_ms, 0);
+  }
+}
+
 static int network_event_handler(bool connected) {
   if (connected) {
+    mqtt_bridge_set_cmd_handler(mqtt_control_cmd_handler, NULL);
     mqtt_bridge_start();
-    // Enter into Room directly
-    RUN_ASYNC(start, {
-      start_webrtc(NULL);
-      ESP_LOGI(TAG, "Use browser to enter https://%s/webrtc/test for test", get_network_ip());
-    });
+    mqtt_bridge_publish_json("status", "{\"webrtc\":\"idle\"}");
+    ESP_LOGI(TAG, "MQTT control ready at %s", get_network_ip());
     // sctp_show_details(true);
   } else {
     mqtt_bridge_stop();
     stop_webrtc();
+    atomic_store(&s_last_heartbeat_ms, 0);
   }
   return 0;
 }
@@ -243,6 +286,7 @@ void app_main(void) {
     // UpdateLed(boottime_ms);
     media_lib_thread_sleep(2000);
     query_webrtc();
+    mqtt_control_loop();
     print_memory_info();
   }
 }
