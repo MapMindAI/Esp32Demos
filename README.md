@@ -1,4 +1,4 @@
-# Esp32Demos
+# ESP32-Robot-WebRTC
 
 This repo is an end-to-end ESP-IDF demo workspace for building a small remote-controlled robot / device prototype with:
 
