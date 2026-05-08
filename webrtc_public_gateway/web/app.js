@@ -7,6 +7,8 @@
   let statsTimer = null;
   let prevVideoBytes = 0;
   let prevStatsTs = 0;
+  let lastVideoRxMs = 0;
+  let videoStalled = false;
   let mqttClient = null;
   let heartbeatTimer = null;
   let pendingWebrtcOpen = false;
@@ -28,9 +30,22 @@
   const mqttSendBtn = document.getElementById('mqttSendBtn');
   const mqttStatusEl = document.getElementById('mqttStatus');
   const mqttLogEl = document.getElementById('mqttLog');
+  const robotUpBtn = document.getElementById('robotUpBtn');
+  const robotDownBtn = document.getElementById('robotDownBtn');
+  const robotLeftBtn = document.getElementById('robotLeftBtn');
+  const robotRightBtn = document.getElementById('robotRightBtn');
+  const robotStopBtn = document.getElementById('robotStopBtn');
+  const servoUpBtn = document.getElementById('servoUpBtn');
+  const servoDownBtn = document.getElementById('servoDownBtn');
+  const servoLeftBtn = document.getElementById('servoLeftBtn');
+  const servoRightBtn = document.getElementById('servoRightBtn');
+  const servoStopBtn = document.getElementById('servoStopBtn');
+  const servoStepSlider = document.getElementById('servoStepSlider');
+  const servoStepValue = document.getElementById('servoStepValue');
 
   const setStatus = (msg) => { statusEl.textContent = msg; };
   const setMqttStatus = (msg) => { mqttStatusEl.textContent = msg; };
+  const VIDEO_STALL_TIMEOUT_MS = 8000;
 
   function appendMqttLog(line) {
     const ts = new Date().toLocaleTimeString();
@@ -59,6 +74,8 @@
     remoteStream = null;
     prevVideoBytes = 0;
     prevStatsTs = 0;
+    lastVideoRxMs = 0;
+    videoStalled = false;
     videoEl.srcObject = null;
     connectBtn.disabled = false;
     disconnectBtn.disabled = true;
@@ -133,6 +150,8 @@
           remoteStream.addTrack(track);
         }
         videoEl.play().catch(() => {});
+        lastVideoRxMs = Date.now();
+        videoStalled = false;
         setStatus('Streaming from ESP32');
         startConnectionQualityLogs();
       },
@@ -151,6 +170,8 @@
         remoteStream = null;
         prevVideoBytes = 0;
         prevStatsTs = 0;
+        lastVideoRxMs = 0;
+        videoStalled = false;
         subscriberHandle = null;
       },
     });
@@ -185,13 +206,18 @@
 
       let bitrateKbps = 0;
       if (inboundVideo && typeof inboundVideo.bytesReceived === 'number' && typeof inboundVideo.timestamp === 'number') {
+        const prevBytes = prevVideoBytes;
         if (prevStatsTs > 0 && inboundVideo.timestamp > prevStatsTs) {
           const dtSec = (inboundVideo.timestamp - prevStatsTs) / 1000;
-          const dBytes = inboundVideo.bytesReceived - prevVideoBytes;
+          const dBytes = inboundVideo.bytesReceived - prevBytes;
           bitrateKbps = dtSec > 0 ? (dBytes * 8) / dtSec / 1000 : 0;
         }
         prevVideoBytes = inboundVideo.bytesReceived;
         prevStatsTs = inboundVideo.timestamp;
+        if (inboundVideo.bytesReceived > prevBytes) {
+          lastVideoRxMs = Date.now();
+          videoStalled = false;
+        }
       }
 
       const rttMs = selectedPair?.currentRoundTripTime ? Math.round(selectedPair.currentRoundTripTime * 1000) : null;
@@ -204,6 +230,21 @@
       const quality = `${emoji} ICE:${pc.iceConnectionState} RTT:${rttMs ?? '-'}ms Bitrate:${Math.round(bitrateKbps)}kbps FPS:${fps ?? '-'} Jitter:${jitterMs ?? '-'}ms Drop:${dropped ?? '-'} Dec:${decoded ?? '-'}`;
       console.log(`[quality] ${quality}`);
       setStatus(`Streaming from ESP32 | ${quality}`);
+
+      if (!videoStalled && lastVideoRxMs > 0 && (Date.now() - lastVideoRxMs) > VIDEO_STALL_TIMEOUT_MS) {
+        videoStalled = true;
+        const errMsg = `Video stalled: no inbound video for ${Math.round(VIDEO_STALL_TIMEOUT_MS / 1000)}s`;
+        console.error(`[webrtc] ${errMsg}`);
+        appendMqttLog(`ERROR ${errMsg}`);
+        const cmdTopic = mqttCmdTopicEl.value.trim();
+        if (mqttClient && mqttClient.connected && cmdTopic) {
+          mqttClient.publish(cmdTopic, 'CLOSE_WEBRTC');
+          appendMqttLog(`TX ${cmdTopic}: CLOSE_WEBRTC`);
+        }
+        await destroySession();
+        setStatus(`${errMsg}; WebRTC closed.`);
+        return;
+      }
     } catch (err) {
       console.log(`[quality] stats error: ${err}`);
     }
@@ -279,6 +320,18 @@
       mqttConnectBtn.disabled = true;
       mqttDisconnectBtn.disabled = false;
       mqttSendBtn.disabled = false;
+      robotUpBtn.disabled = false;
+      robotDownBtn.disabled = false;
+      robotLeftBtn.disabled = false;
+      robotRightBtn.disabled = false;
+      robotStopBtn.disabled = false;
+      servoUpBtn.disabled = false;
+      servoDownBtn.disabled = false;
+      servoLeftBtn.disabled = false;
+      servoRightBtn.disabled = false;
+      servoStopBtn.disabled = false;
+      servoStepSlider.disabled = false;
+      mqttPublishCommand(`SERVO_STEP:${servoStepSlider.value}`);
       mqttClient.subscribe(memTopic, { qos: 0 }, (err) => {
         if (err) {
           appendMqttLog(`Subscribe failed: ${err.message || err}`);
@@ -311,6 +364,17 @@
       mqttConnectBtn.disabled = false;
       mqttDisconnectBtn.disabled = true;
       mqttSendBtn.disabled = true;
+      robotUpBtn.disabled = true;
+      robotDownBtn.disabled = true;
+      robotLeftBtn.disabled = true;
+      robotRightBtn.disabled = true;
+      robotStopBtn.disabled = true;
+      servoUpBtn.disabled = true;
+      servoDownBtn.disabled = true;
+      servoLeftBtn.disabled = true;
+      servoRightBtn.disabled = true;
+      servoStopBtn.disabled = true;
+      servoStepSlider.disabled = true;
       pendingWebrtcOpen = false;
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
@@ -356,6 +420,17 @@
     mqttConnectBtn.disabled = false;
     mqttDisconnectBtn.disabled = true;
     mqttSendBtn.disabled = true;
+    robotUpBtn.disabled = true;
+    robotDownBtn.disabled = true;
+    robotLeftBtn.disabled = true;
+    robotRightBtn.disabled = true;
+    robotStopBtn.disabled = true;
+    servoUpBtn.disabled = true;
+    servoDownBtn.disabled = true;
+    servoLeftBtn.disabled = true;
+    servoRightBtn.disabled = true;
+    servoStopBtn.disabled = true;
+    servoStepSlider.disabled = true;
     setMqttStatus('MQTT: disconnected');
   }
 
@@ -377,6 +452,43 @@
         appendMqttLog(`TX ${cmdTopic}: ${cmd}`);
       }
     });
+  }
+
+  function mqttPublishCommand(cmd) {
+    if (!mqttClient || !mqttClient.connected) {
+      setMqttStatus('MQTT: not connected');
+      return false;
+    }
+    const cmdTopic = mqttCmdTopicEl.value.trim();
+    if (!cmdTopic) {
+      setMqttStatus('MQTT: command topic is empty');
+      return false;
+    }
+    mqttClient.publish(cmdTopic, cmd, { qos: 0, retain: false }, (err) => {
+      if (err) {
+        appendMqttLog(`TX failed: ${err.message || err}`);
+      } else {
+        appendMqttLog(`TX ${cmdTopic}: ${cmd}`);
+      }
+    });
+    return true;
+  }
+
+  function bindControlButton(btn, cmd, stopCmd) {
+    const send = (ev) => {
+      ev.preventDefault();
+      mqttPublishCommand(cmd);
+    };
+    const stop = (ev) => {
+      ev.preventDefault();
+      mqttPublishCommand(stopCmd);
+    };
+    btn.addEventListener('mousedown', send);
+    btn.addEventListener('touchstart', send, { passive: false });
+    btn.addEventListener('mouseup', stop);
+    btn.addEventListener('mouseleave', stop);
+    btn.addEventListener('touchend', stop, { passive: false });
+    btn.addEventListener('touchcancel', stop, { passive: false });
   }
 
   function requestAndAttachPublisher(roomId, roomPin) {
@@ -502,5 +614,28 @@
   });
   roomIdEl.addEventListener('input', syncMqttFromRoom);
   roomPinEl.addEventListener('input', syncMqttFromRoom);
+  servoStepValue.textContent = servoStepSlider.value;
+  servoStepSlider.addEventListener('input', () => {
+    servoStepValue.textContent = servoStepSlider.value;
+  });
+  servoStepSlider.addEventListener('change', () => {
+    mqttPublishCommand(`SERVO_STEP:${servoStepSlider.value}`);
+  });
+  bindControlButton(robotUpBtn, 'ROBOT_UP', 'ROBOT_STOP');
+  bindControlButton(robotDownBtn, 'ROBOT_DOWN', 'ROBOT_STOP');
+  bindControlButton(robotLeftBtn, 'ROBOT_LEFT', 'ROBOT_STOP');
+  bindControlButton(robotRightBtn, 'ROBOT_RIGHT', 'ROBOT_STOP');
+  robotStopBtn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    mqttPublishCommand('ROBOT_STOP');
+  });
+  bindControlButton(servoUpBtn, 'SERVO_UP', 'SERVO_STOP');
+  bindControlButton(servoDownBtn, 'SERVO_DOWN', 'SERVO_STOP');
+  bindControlButton(servoLeftBtn, 'SERVO_LEFT', 'SERVO_STOP');
+  bindControlButton(servoRightBtn, 'SERVO_RIGHT', 'SERVO_STOP');
+  servoStopBtn.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    mqttPublishCommand('SERVO_STOP');
+  });
   syncMqttFromRoom();
 })();

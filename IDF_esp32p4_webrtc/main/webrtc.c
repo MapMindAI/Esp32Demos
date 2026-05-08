@@ -8,6 +8,7 @@
 */
 
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 #include "common.h"
 #include "driver/gpio.h"
@@ -161,20 +162,66 @@ static void door_bell_change_state(door_bell_state_t state) {
 }
 
 uint32_t current_velocity_ = 125;
+uint32_t servo_velocity_ = 5;
+
+static bool is_cmd(const char* cmd, const char* exact, const char* legacy) {
+  if (exact && strcmp(cmd, exact) == 0) {
+    return true;
+  }
+  return legacy && strcmp(cmd, legacy) == 0;
+}
+
+static bool ProcessServoCommand(const char* cmd) {
+  if (is_cmd(cmd, "SERVO_UP", "HeadUp")) {
+    AddMessageToSend(18, servo_velocity_);
+    return true;
+  } else if (is_cmd(cmd, "SERVO_DOWN", "HeadDown")) {
+    AddMessageToSend(12, servo_velocity_);
+    return true;
+  } else if (is_cmd(cmd, "SERVO_LEFT", "HeadLeft")) {
+    AddMessageToSend(14, servo_velocity_);
+    return true;
+  } else if (is_cmd(cmd, "SERVO_RIGHT", "HeadRight")) {
+    AddMessageToSend(16, servo_velocity_);
+    return true;
+  } else if (is_cmd(cmd, "SERVO_STOP", NULL)) {
+    AddMessageToSend(15, 0);
+    return true;
+  }
+  return false;
+}
+
+static bool ProcessServoConfigCommand(const char* cmd) {
+  const char* prefix = "SERVO_STEP:";
+  const size_t prefix_len = 11;
+  if (strncmp(cmd, prefix, prefix_len) != 0) {
+    return false;
+  }
+  long step = strtol(cmd + prefix_len, NULL, 10);
+  if (step < 0) {
+    step = 0;
+  } else if (step > 20) {
+    step = 20;
+  }
+  servo_velocity_ = (uint32_t)step;
+  ESP_LOGI(TAG, "Servo step updated: %" PRIu32, servo_velocity_);
+  return true;
+}
+
 static bool ProcessMoveCommand(const char* cmd) {
-  if (SAME_STR(cmd, "Up")) {
+  if (is_cmd(cmd, "ROBOT_UP", "Up")) {
     AddMessageToSend(8, current_velocity_);
     return true;
-  } else if (SAME_STR(cmd, "Down")) {
+  } else if (is_cmd(cmd, "ROBOT_DOWN", "Down")) {
     AddMessageToSend(2, current_velocity_);
     return true;
-  } else if (SAME_STR(cmd, "Left")) {
+  } else if (is_cmd(cmd, "ROBOT_LEFT", "Left")) {
     AddMessageToSend(4, current_velocity_);
     return true;
-  } else if (SAME_STR(cmd, "Right")) {
+  } else if (is_cmd(cmd, "ROBOT_RIGHT", "Right")) {
     AddMessageToSend(6, current_velocity_);
     return true;
-  } else if (SAME_STR(cmd, "Stop")) {
+  } else if (is_cmd(cmd, "ROBOT_STOP", "Stop")) {
     AddMessageToSend(5, 0);
     return true;
   }
@@ -191,6 +238,14 @@ static int door_bell_on_cmd(esp_webrtc_custom_data_via_t via, uint8_t* data, int
   }
   ESP_LOGI(TAG, "Receive command %.*s", size, (char*)data);
   const char* cmd = (const char*)data;
+
+  if (ProcessServoConfigCommand(cmd)) {
+    return 0;
+  }
+
+  if (ProcessServoCommand(cmd)) {
+    return 0;
+  }
 
   if (ProcessMoveCommand(cmd)) {
     return 0;
@@ -531,6 +586,20 @@ static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
 }
 
 void send_cmd(char* cmd) {
+  if (!cmd) {
+    return;
+  }
+  if (ProcessServoConfigCommand(cmd)) {
+    return;
+  }
+  if (ProcessServoCommand(cmd)) {
+    ESP_LOGI(TAG, "Servo command via control: %s", cmd);
+    return;
+  }
+  if (ProcessMoveCommand(cmd)) {
+    ESP_LOGI(TAG, "Move command via control: %s", cmd);
+    return;
+  }
   if (SAME_STR(cmd, "ring")) {
     SEND_CMD(webrtc, DOOR_BELL_RING_CMD);
     ESP_LOGI(TAG, "Ring button on state %d", door_bell_state);
