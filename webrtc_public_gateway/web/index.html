@@ -85,10 +85,6 @@
       <button id="mqttConnectBtn">MQTT Connect</button>
       <button id="mqttDisconnectBtn" disabled>MQTT Disconnect</button>
     </div>
-    <div class="row">
-      <input id="mqttCmdInput" placeholder="Send command string to ESP32" style="flex:1; min-width: 260px;" />
-      <button id="mqttSendBtn" disabled>Send MQTT Cmd</button>
-    </div>
     <details>
       <summary>Advanced Options</summary>
       <div class="row" style="margin-top:10px;">
@@ -105,6 +101,10 @@
         <input id="apiSecret" placeholder="Janus API Secret (if enabled)" />
         <button id="connectBtn">WebRTC Connect</button>
         <button id="disconnectBtn" disabled>WebRTC Disconnect</button>
+      </div>
+      <div class="row">
+        <input id="mqttCmdInput" placeholder="Send command string to ESP32" style="flex:1; min-width: 260px;" />
+        <button id="mqttSendBtn" disabled>Send MQTT Cmd</button>
       </div>
     </details>
 
