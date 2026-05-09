@@ -10,6 +10,8 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include "esp_random.h"
+#include "esp_timer.h"
 #include "common.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -96,6 +98,149 @@ typedef struct {
 static rtp_transformer_ctx_t sender_transformer_ctx;
 static rtp_transformer_ctx_t receiver_transformer_ctx;
 static bool rtp_transformer_enabled = false;
+static uint32_t imu_sync_send_count = 0;
+static uint32_t imu_sync_skip_count = 0;
+static uint32_t imu_sync_fail_count = 0;
+static uint32_t imu_last_pts = UINT32_MAX;
+static uint32_t imu_seq = 0;
+static bool imu_data_channel_connected = false;
+static bool imu_data_channel_create_requested = false;
+
+static float randf_range(float min_v, float max_v) {
+  uint32_t r = esp_random();
+  float t = (float)(r & 0xFFFF) / 65535.0f;
+  return min_v + (max_v - min_v) * t;
+}
+
+__attribute__((weak)) bool board_read_imu_sample(float* ax, float* ay, float* az, float* gx, float* gy, float* gz) {
+  // Default test generator when no real IMU driver is linked.
+  if (!ax || !ay || !az || !gx || !gy || !gz) {
+    return false;
+  }
+  *ax = randf_range(-0.2f, 0.2f);
+  *ay = randf_range(-0.2f, 0.2f);
+  *az = randf_range(0.85f, 1.15f);
+  *gx = randf_range(-3.0f, 3.0f);
+  *gy = randf_range(-3.0f, 3.0f);
+  *gz = randf_range(-3.0f, 3.0f);
+  return true;
+}
+
+static user_data_ch_t* get_first_open_data_channel(void) {
+  for (int i = 0; i < ELEMS(user_ch); i++) {
+    if (user_ch[i].used) {
+      return &user_ch[i];
+    }
+  }
+  return NULL;
+}
+
+static void reset_imu_sync_state(void) {
+  imu_sync_send_count = 0;
+  imu_sync_skip_count = 0;
+  imu_sync_fail_count = 0;
+  imu_last_pts = UINT32_MAX;
+  imu_data_channel_connected = false;
+  imu_data_channel_create_requested = false;
+}
+
+static void request_imu_data_channel(const char* reason) {
+  if (!webrtc) {
+    return;
+  }
+  esp_peer_handle_t peer_handle = NULL;
+  int ret = esp_webrtc_get_peer_connection(webrtc, &peer_handle);
+  if (ret != ESP_PEER_ERR_NONE || !peer_handle) {
+    ESP_LOGW(TAG, "IMU sync unable to request data channel (%s), peer_handle unavailable ret=%d", reason ? reason : "-",
+             ret);
+    return;
+  }
+
+  esp_peer_data_channel_cfg_t ch_cfg = {
+      .type = ESP_PEER_DATA_CHANNEL_RELIABLE,
+      .ordered = true,
+      .label = "imu",
+  };
+  ret = esp_peer_create_data_channel(peer_handle, &ch_cfg);
+  if (ret == ESP_PEER_ERR_NONE) {
+    imu_data_channel_create_requested = true;
+    ESP_LOGI(TAG, "IMU sync requested local data channel label=%s reason=%s", ch_cfg.label, reason ? reason : "-");
+  } else if (ret != ESP_PEER_ERR_WRONG_STATE) {
+    ESP_LOGW(TAG, "IMU sync request data channel failed ret=%d reason=%s", ret, reason ? reason : "-");
+  }
+}
+
+static int send_imu_synced_with_video(esp_peer_video_frame_t* frame, void* ctx) {
+  (void)ctx;
+  if (!frame || !webrtc || !webrtc_connected) {
+    return 0;
+  }
+  // Send once per unique video PTS.
+  if (frame->pts == imu_last_pts) {
+    return 0;
+  }
+  imu_last_pts = frame->pts;
+
+  user_data_ch_t* data_ch = get_first_open_data_channel();
+  bool fallback_stream = false;
+  uint16_t stream_id = 0;
+  if (!data_ch) {
+    fallback_stream = true;
+    imu_sync_skip_count++;
+    if (imu_sync_skip_count == 1 || (imu_sync_skip_count % 120) == 0) {
+      ESP_LOGW(TAG,
+               "IMU sync no tracked data channel, fallback stream_id=0 skipped=%" PRIu32
+               " dc_connected=%d create_requested=%d",
+               imu_sync_skip_count, imu_data_channel_connected, imu_data_channel_create_requested);
+    }
+    if (!imu_data_channel_create_requested || (imu_sync_skip_count % 240) == 0) {
+      request_imu_data_channel("video_send_fallback");
+    }
+  } else {
+    stream_id = data_ch->info.stream_id;
+  }
+
+  float ax = 0.0f, ay = 0.0f, az = 1.0f;
+  float gx = 0.0f, gy = 0.0f, gz = 0.0f;
+  int valid = board_read_imu_sample(&ax, &ay, &az, &gx, &gy, &gz) ? 1 : 0;
+  uint64_t ts_us = esp_timer_get_time();
+  uint32_t ts_ms = (uint32_t)(ts_us / 1000);
+
+  char payload[256];
+  int n = snprintf(payload, sizeof(payload),
+                   "{\"type\":\"imu\",\"seq\":%" PRIu32 ",\"video_pts\":%" PRIu32 ",\"ts_ms\":%" PRIu32
+                   ",\"ts_us\":%" PRIu64
+                   ",\"valid\":%d,\"acc\":[%.4f,%.4f,%.4f],\"gyro\":[%.4f,%.4f,%.4f]}",
+                   imu_seq++, frame->pts, ts_ms, ts_us, valid, ax, ay, az, gx, gy, gz);
+  if (n <= 0 || n >= (int)sizeof(payload)) {
+    return 0;
+  }
+  esp_peer_handle_t peer_handle = NULL;
+  int ret = esp_webrtc_get_peer_connection(webrtc, &peer_handle);
+  if (ret != 0 || !peer_handle) {
+    return 0;
+  }
+  esp_peer_data_frame_t data_frame = {
+      .type = ESP_PEER_DATA_CHANNEL_STRING,
+      .stream_id = stream_id,
+      .data = (uint8_t*)payload,
+      .size = n,
+  };
+  ret = esp_peer_send_data(peer_handle, &data_frame);
+  if (ret == 0) {
+    imu_sync_send_count++;
+    if (imu_sync_send_count % 120 == 0) {
+      ESP_LOGI(TAG, "IMU sync sent count=%" PRIu32 " last_video_pts=%" PRIu32, imu_sync_send_count, frame->pts);
+    }
+  } else if (ret != ESP_PEER_ERR_WOULD_BLOCK && ret != ESP_PEER_ERR_WRONG_STATE) {
+    imu_sync_fail_count++;
+    if (imu_sync_fail_count == 1 || (imu_sync_fail_count % 120) == 0) {
+      ESP_LOGW(TAG, "IMU sync send failed ret=%d stream_id=%u fallback=%d fail_count=%" PRIu32, ret, stream_id,
+               fallback_stream, imu_sync_fail_count);
+    }
+  }
+  return 0;
+}
 
 static void cleanup_webrtc_handle(void) {
   if (webrtc) {
@@ -370,7 +515,9 @@ static void data_thread_hdlr(void* arg) {
 }
 
 static int webrtc_data_channel_opened(esp_peer_data_channel_info_t* ch, void* ctx) {
+  imu_data_channel_connected = true;
   ESP_LOGI(TAG, "Channel %s opened stream id %d", ch->label ? ch->label : "NULL", ch->stream_id);
+  ESP_LOGI(TAG, "IMU sync data channel ready label=%s stream_id=%d", ch->label ? ch->label : "NULL", ch->stream_id);
   add_channel(ch);
   return 0;
 }
@@ -412,6 +559,8 @@ static int webrtc_on_data(esp_peer_data_frame_t* frame, void* ctx) {
 }
 
 static int webrtc_data_channel_closed(esp_peer_data_channel_info_t* ch, void* ctx) {
+  imu_data_channel_connected = false;
+  ESP_LOGW(TAG, "IMU sync data channel closed label=%s stream_id=%d", ch->label ? ch->label : "NULL", ch->stream_id);
   remove_channel(ch);
   return 0;
 }
@@ -558,6 +707,7 @@ static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
   if (event->type == ESP_WEBRTC_EVENT_CONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_CONNECTED);
     webrtc_connected = true;
+    request_imu_data_channel("peer_connected");
     if (webrtc) {
       esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_STABLE);
       esp_webrtc_set_audio_bitrate(webrtc, WEBRTC_AUDIO_BITRATE);
@@ -567,6 +717,7 @@ static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
   } else if (event->type == ESP_WEBRTC_EVENT_CONNECT_FAILED || event->type == ESP_WEBRTC_EVENT_DISCONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_NONE);
     webrtc_connected = false;
+    reset_imu_sync_state();
     // Reset transformer contexts
     memset(&sender_transformer_ctx, 0, sizeof(sender_transformer_ctx));
     memset(&receiver_transformer_ctx, 0, sizeof(receiver_transformer_ctx));
@@ -581,6 +732,14 @@ static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
     esp_peer_addr_t addr = {};
     esp_peer_get_paired_addr(peer_handle, &addr);
     ESP_LOGI(TAG, "Paired with %d.%d.%d.%d:%d", addr.ipv4[0], addr.ipv4[1], addr.ipv4[2], addr.ipv4[3], addr.port);
+  } else if (event->type == ESP_WEBRTC_EVENT_DATA_CHANNEL_CONNECTED ||
+             event->type == ESP_WEBRTC_EVENT_DATA_CHANNEL_OPENED) {
+    imu_data_channel_connected = true;
+    ESP_LOGI(TAG, "IMU sync data channel state event=%d body=%s", event->type, event->body ? event->body : "NULL");
+  } else if (event->type == ESP_WEBRTC_EVENT_DATA_CHANNEL_DISCONNECTED ||
+             event->type == ESP_WEBRTC_EVENT_DATA_CHANNEL_CLOSED) {
+    imu_data_channel_connected = false;
+    ESP_LOGW(TAG, "IMU sync data channel state event=%d body=%s", event->type, event->body ? event->body : "NULL");
   }
   return 0;
 }
@@ -648,6 +807,7 @@ int start_webrtc(char* url) {
     webrtc_connected = false;
     cleanup_webrtc_handle();
   }
+  reset_imu_sync_state();
   monitor_key = true;
   media_lib_thread_handle_t key_thread;
   media_lib_thread_create_from_scheduler(&key_thread, "Key", key_monitor_thread, NULL);
@@ -698,8 +858,9 @@ int start_webrtc(char* url) {
               .on_channel_open = webrtc_data_channel_opened,
               .on_data = webrtc_on_data,
               .on_channel_close = webrtc_data_channel_closed,
+              .on_video_send = send_imu_synced_with_video,
               .enable_data_channel = true,
-              .manual_ch_create = true,   // If work as SCTP client disable create data channel automatically
+              .manual_ch_create = false,  // Auto-create data channel so IMU stream has an active SCTP channel
               .no_auto_reconnect =
 #if CONFIG_DOORBELL_SIGNALING_JANUS
                   false,  // Janus test mode: auto connect without ACCEPT_CALL gating

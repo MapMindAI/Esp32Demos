@@ -12,6 +12,8 @@
   let mqttClient = null;
   let heartbeatTimer = null;
   let pendingWebrtcOpen = false;
+  let imuDataRxCount = 0;
+  let nonImuDataRxCount = 0;
 
   const statusEl = document.getElementById('status');
   const videoEl = document.getElementById('remoteVideo');
@@ -30,6 +32,7 @@
   const mqttSendBtn = document.getElementById('mqttSendBtn');
   const mqttStatusEl = document.getElementById('mqttStatus');
   const mqttLogEl = document.getElementById('mqttLog');
+  const imuLogEl = document.getElementById('imuLog');
   const robotUpBtn = document.getElementById('robotUpBtn');
   const robotDownBtn = document.getElementById('robotDownBtn');
   const robotLeftBtn = document.getElementById('robotLeftBtn');
@@ -51,6 +54,59 @@
     const ts = new Date().toLocaleTimeString();
     mqttLogEl.textContent += `[${ts}] ${line}\n`;
     mqttLogEl.scrollTop = mqttLogEl.scrollHeight;
+  }
+
+  function appendImuLog(line) {
+    if (!imuLogEl) {
+      return;
+    }
+    const ts = new Date().toLocaleTimeString();
+    imuLogEl.textContent += `[${ts}] ${line}\n`;
+    imuLogEl.scrollTop = imuLogEl.scrollHeight;
+  }
+
+  function decodeDataChannelPayload(raw) {
+    if (typeof raw === 'string') {
+      return Promise.resolve(raw);
+    }
+    if (raw instanceof ArrayBuffer) {
+      return Promise.resolve(new TextDecoder().decode(new Uint8Array(raw)));
+    }
+    if (typeof Blob !== 'undefined' && raw instanceof Blob) {
+      return raw.text();
+    }
+    return Promise.resolve(String(raw));
+  }
+
+  function logDataChannelStates(prefix) {
+    const channels = subscriberHandle?.webrtcStuff?.dataChannel;
+    if (!channels) {
+      appendImuLog(`${prefix} data channels: none`);
+      return;
+    }
+    const states = Object.entries(channels)
+      .map(([label, dc]) => `${label}:${dc?.readyState ?? 'unknown'}`)
+      .join(', ');
+    appendImuLog(`${prefix} data channels: ${states || 'none'}`);
+  }
+
+  function handleImuData(raw) {
+    let msg = null;
+    try {
+      msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    } catch (_e) {
+      appendImuLog(`Non-JSON data: ${String(raw).slice(0, 96)}`);
+      return false;
+    }
+    if (!msg || msg.type !== 'imu') {
+      return false;
+    }
+    const acc = Array.isArray(msg.acc) ? msg.acc.map((v) => Number(v).toFixed(3)).join(',') : '-';
+    const gyro = Array.isArray(msg.gyro) ? msg.gyro.map((v) => Number(v).toFixed(3)).join(',') : '-';
+    appendImuLog(
+      `seq=${msg.seq ?? '-'} video_pts=${msg.video_pts ?? '-'} ts_ms=${msg.ts_ms ?? '-'} ts_us=${msg.ts_us ?? '-'} valid=${msg.valid ?? 0} acc=[${acc}] gyro=[${gyro}]`,
+    );
+    return true;
   }
 
   const janusServer = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/janus-ws`;
@@ -81,7 +137,7 @@
     disconnectBtn.disabled = true;
   }
 
-  function attachSubscriber(feedId, roomId, roomPin) {
+  function attachSubscriber(feedId, roomId, roomPin, publisherStreams) {
     selectedFeedId = feedId;
     remoteStream = new MediaStream();
     videoEl.srcObject = remoteStream;
@@ -90,12 +146,30 @@
       plugin: 'janus.plugin.videoroom',
       success: (pluginHandle) => {
         subscriberHandle = pluginHandle;
+        let streams = [{ feed: feedId }];
+        if (Array.isArray(publisherStreams) && publisherStreams.length > 0) {
+          streams = publisherStreams
+            .filter((s) => s && s.mid && (s.type === 'audio' || s.type === 'video' || s.type === 'data'))
+            .map((s) => ({ feed: feedId, mid: s.mid }));
+          if (!streams.length) {
+            streams = [{ feed: feedId }];
+          }
+        }
         const join = {
           request: 'join',
           ptype: 'subscriber',
           room: roomId,
-          streams: [{ feed: feedId }],
+          feed: feedId,
+          data: true,
+          offer_data: true,
+          audio: true,
+          offer_audio: true,
+          video: true,
+          offer_video: true,
         };
+        if (streams.length > 0) {
+          join.streams = streams;
+        }
         if (roomPin) {
           join.pin = roomPin;
         }
@@ -119,13 +193,21 @@
             return;
           }
         }
+        if (msg?.streams && Array.isArray(msg.streams)) {
+          const summary = msg.streams.map((s) => `${s.type}:${s.mid ?? s.feed_mid ?? '-'}`).join(', ');
+          appendImuLog(`Janus streams: ${summary}`);
+        }
         if (msg.videoroom === 'attached') {
           setStatus('Attached to publisher feed.');
         }
         if (jsep) {
           subscriberHandle.createAnswer({
             jsep,
-            tracks: [{ type: 'audio', capture: false, recv: true }, { type: 'video', capture: false, recv: true }],
+            tracks: [
+              { type: 'audio', capture: false, recv: true },
+              { type: 'video', capture: false, recv: true },
+              { type: 'data' },
+            ],
             success: (jsepAnswer) => {
               subscriberHandle.send({ message: { request: 'start', room: roomId }, jsep: jsepAnswer });
             },
@@ -155,13 +237,43 @@
         setStatus('Streaming from ESP32');
         startConnectionQualityLogs();
       },
+      ondataopen: (label, protocol) => {
+        console.log('[imu] data channel opened', { label, protocol });
+        appendImuLog(`Data channel opened label=${label ?? '-'} protocol=${protocol ?? '-'}`);
+        logDataChannelStates('ondataopen');
+      },
+      ondata: (data) => {
+        decodeDataChannelPayload(data)
+          .then((text) => {
+            console.log('[imu] data rx', text);
+            if (handleImuData(text)) {
+              imuDataRxCount++;
+              if (imuDataRxCount === 1 || (imuDataRxCount % 60) === 0) {
+                appendImuLog(`IMU payload count=${imuDataRxCount}`);
+              }
+            } else {
+              nonImuDataRxCount++;
+              if (nonImuDataRxCount === 1 || (nonImuDataRxCount % 20) === 0) {
+                appendImuLog(`Non-IMU payload count=${nonImuDataRxCount} preview=${String(text).slice(0, 96)}`);
+              }
+            }
+          })
+          .catch((err) => {
+            appendImuLog(`Data decode error: ${err}`);
+          });
+      },
       webrtcState: (on) => {
         console.log(`[webrtc] state=${on ? 'up' : 'down'}`);
+        appendImuLog(`WebRTC state=${on ? 'up' : 'down'}`);
+        logDataChannelStates('webrtcState');
       },
       iceState: (state) => {
         console.log(`[webrtc] iceState=${state}`);
+        appendImuLog(`ICE state=${state}`);
       },
       oncleanup: () => {
+        appendImuLog('Subscriber cleanup triggered');
+        logDataChannelStates('cleanup');
         if (statsTimer) {
           clearInterval(statsTimer);
           statsTimer = null;
@@ -172,6 +284,8 @@
         prevStatsTs = 0;
         lastVideoRxMs = 0;
         videoStalled = false;
+        imuDataRxCount = 0;
+        nonImuDataRxCount = 0;
         subscriberHandle = null;
       },
     });
@@ -517,7 +631,8 @@
           setStatus('No active publisher found in room. Ensure ESP32 is connected.');
           return;
         }
-        const candidateFeedId = publishers[0].id;
+        const selectedPublisher = publishers[0];
+        const candidateFeedId = selectedPublisher.id;
         if (selectedFeedId === candidateFeedId && subscriberHandle) {
           setStatus(`Already subscribed to feed ${candidateFeedId}.`);
           return;
@@ -526,7 +641,7 @@
           subscriberHandle.detach();
           subscriberHandle = null;
         }
-        attachSubscriber(candidateFeedId, roomId, roomPin);
+        attachSubscriber(candidateFeedId, roomId, roomPin, selectedPublisher.streams);
       },
       error: (err) => setStatus(`listparticipants failed: ${err}`),
     });
