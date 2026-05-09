@@ -16,4 +16,4 @@
 
 // Power saving: disable PWM output on SERVO_STOP to reduce holding current.
 // Tradeoff: servo will not hold torque while idle.
-#define SERVO_POWER_SAVE_WHEN_IDLE 1
+#define SERVO_POWER_SAVE_WHEN_IDLE 0

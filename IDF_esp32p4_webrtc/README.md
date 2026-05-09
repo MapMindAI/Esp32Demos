@@ -1,110 +1,102 @@
+# ESP32-Robot-WebRTC
 
-# Doorbell Local Demo
+This repo is an end-to-end ESP-IDF demo workspace for building a small remote-controlled robot / device prototype with:
 
-## Overview
+- ESP32-P4 WebRTC video/audio streaming
+- Browser-based control page
+- MQTT command bridge
+- CAN bus command forwarding
+- ESP32-C3 CAN receiver and dual-servo controller
+- Local Docker gateway stack based on Janus, Caddy, and Mosquitto
+- [Aliyun ECS Deployment Guide (WebRTC + MQTT Gateway)](webrtc_public_gateway/ALIYUN_ECS_DEPLOYMENT.md)
 
-This demo shows how to use `esp_webrtc` to build a local doorbell application. An ESP32 series board acts as an HTTPS signaling server and provides real-time video streaming and two-way audio communication.
+This repository is intended as a quick development entry point for experimenting with ESP32 WebRTC streaming, web-to-device control, and CAN/servo actuation in one integrated workflow.
 
-## Hardware Requirements
+![display](../assets/display.jpg)
 
-The default hardware setup uses the [ESP32P4-Function-Ev-Board](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html), which includes an SC2336 camera.
+https://github.com/user-attachments/assets/2f8988e1-435c-417a-9031-e2dc0ea89c77
 
-## Build Instructions
+## Repo layout
 
-### ESP-IDF Version
+- `IDF_esp32p4_webrtc/`: ESP32-P4 WebRTC publisher firmware (camera/audio + MQTT command bridge).
+- `IDF_esp32c3_servo_control/`: ESP32-C3 CAN receiver + dual-servo controller.
+- `webrtc_public_gateway/`: Janus + Caddy + Mosquitto docker stack and web control page.
+- `submodules/robot_canbus/`: shared CAN bus helper module.
 
-Use either the **IDF master branch** or **release v5.4**.
 
-### Dependencies
+## 1) One-command config bootstrap
 
-This demo depends only on **ESP-IDF**. All other required components will be automatically fetched from the [ESP-IDF Component Registry](https://components.espressif.com/).
-
-### Configuration
-
-1. **Wi-Fi Settings**
-   Set your Wi-Fi SSID and password in [`settings.h`](main/settings.h).
-
-2. **Camera Configuration**
-   If using a different camera model or resolution, update the corresponding settings in [`settings.h`](main/settings.h).
-
-3. **USB-JTAG Download (Optional)**
-   If using USB-JTAG, uncomment the following line in [`sdkconfig.defaults.esp32p4`](sdkconfig.defaults.esp32p4):
-   ```c
-   CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
-   ```
-
-### Build and Flash
+Generate Janus secrets and sync room settings into gateway + firmware `sdkconfig`:
 
 ```bash
-idf.py -p YOUR_SERIAL_DEVICE flash monitor
+cd webrtc_public_gateway
+./scripts/bootstrap_janus_and_sdkconfig.sh --room-id 1234 --signal-url http://192.168.19.25:8080/janus --mqtt-broker-uri mqtt://192.168.19.25:1883
 ```
 
-## Testing
-
-After the board boots, it will connect to the configured Wi-Fi. To switch to a different Wi-Fi network dynamically, use the CLI:
+## 2) Start gateway stack
 
 ```bash
-wifi YOUR_SSID YOUR_PASSWORD
+cd webrtc_public_gateway
+docker compose up -d --force-recreate
 ```
 
-Once connected, the board will start the signaling server and wait for a peer to connect. A test URL will be printed in the console:
+Open:
 
-```
-Webrtc_Test: Use browser to enter https://192.168.10.33/webrtc/test for test
-```
+- `http://<your-host-ip>:8080/`
 
-You can stop or restart signaling with:
+## 3) Flash ESP32-P4 WebRTC firmware
 
 ```bash
-stop
-start
+source "$IDF_PATH/export.sh"
+cd IDF_esp32p4_webrtc
+idf.py build flash monitor
 ```
 
-### Browser Access
+If serial port is not auto-detected:
 
-Open **Chrome** or **Edge** and visit the printed URL. Since the site uses a self-signed certificate, you may need to trust the page manually.
+```bash
+idf.py -p /dev/ttyACM0 build flash monitor
+```
 
-Also, disable mDNS ICE candidates to ensure proper WebRTC connectivity:
+## 4) Flash ESP32-C3 servo controller (optional)
 
-- **Chrome**: `chrome://flags/#enable-webrtc-hide-local-ips-with-mdns`
-- **Edge**: `edge://flags/#enable-webrtc-hide-local-ips-with-mdns`
+```bash
+source "$IDF_PATH/export.sh"
+cd IDF_esp32c3_servo_control
+idf.py build flash monitor
+```
 
-Disable the option: **WebRTC mDNS ICE candidates**
-Restart the browser for the change to take effect.
+Pin mapping is in:
 
-### Interactions
+- `IDF_esp32c3_servo_control/main/app_config.h`
 
-After opening the page in the browser:
+## 5) Runtime flow (current)
 
-1. **Open Door**
-   - Click the **Door** icon.
-   - The board will play a "Door is opened" tone.
-   - The browser will display: `Receiving Door opened event`.
+1. Open web page and connect MQTT.
+2. Web sends `OPEN_WEBRTC` + heartbeat.
+3. ESP32-P4 starts WebRTC and publishes status.
+4. Web attaches to Janus when status reports ready.
+5. Robot/Servo buttons send MQTT commands (`ROBOT_*`, `SERVO_*`) continuously while pressed.
+6. P4 forwards control commands to CAN.
+7. C3 receives CAN and drives servos.
 
-2. **Calling (Ring Button)**
-   - Press the **boot key** on the board.
-   - The board plays ring music, and the browser shows **Accept Call** and **Deny Call** icons.
-   - If accepted: starts **two-way audio** and **one-way video** (board → browser).
-   - If denied: the call ends.
-   - To change the ring button, modify `DOOR_BELL_RING_BUTTON` in [`settings.h`](main/settings.h).
+## 6) Hardware
 
-3. **End Call / Cleanup**
-   - In the browser: click the **Hangup** icon.
-   - On the board: run the `stop` command.
+Recommended hardware setup:
 
-## Technical Details
+* ESP32-P4 development board with camera/audio support
+  * The default hardware setup uses the [ESP32P4-Function-Ev-Board](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html), which includes an SC2336 camera.
+* ESP32-C3 development board
+* CAN transceiver modules for the ESP32-P4 and ESP32-C3 sides
+* One or two servos
+* External 5V power supply for servos
+* Common ground between ESP32-C3, servo power, and CAN transceiver
+* Host machine running Docker
 
-This demo uses SSE (Server-Sent Events) to send instant messages to the browser and HTTP POST to receive instant messages from the browser.
+## 7) Detailed docs
 
-### Enhancements in `esp_webrtc`
-
-- **`no_auto_reconnect`**: Disables automatic peer connection setup on signaling connect.
-- **`esp_webrtc_enable_peer_connection()`**: Explicit API to control peer connection lifecycle.
-
-For a detailed call flow, refer to the [esp_webrtc connection flow](../../components/esp_webrtc/README.md#typical-call-sequence-of-esp_webrtc).
-
-### Limitations
-
-- Only one peer can connect at a time.
-- A heartbeat timeout of 5 seconds is enforced.
-- If the peer leaves unexpectedly, wait a few seconds before reconnecting.
+- [Aliyun ECS Deployment Guide (WebRTC + MQTT Gateway)](../webrtc_public_gateway/ALIYUN_ECS_DEPLOYMENT.md)
+- [Gateway details](../webrtc_public_gateway/README.md)
+- [MQTT-Controlled WebRTC Flow](../webrtc_public_gateway/MQTT_WEBRTC_CONTROL_FLOW.md)
+- ESP32-P4 project config/options: `IDF_esp32p4_webrtc/main/Kconfig`
+- ESP32-C3 app config: `IDF_esp32c3_servo_control/main/app_config.h`

@@ -85,6 +85,7 @@ Pin mapping is in:
 Recommended hardware setup:
 
 * ESP32-P4 development board with camera/audio support
+  * The default hardware setup uses the [ESP32P4-Function-Ev-Board](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html), which includes an SC2336 camera.
 * ESP32-C3 development board
 * CAN transceiver modules for the ESP32-P4 and ESP32-C3 sides
 * One or two servos
