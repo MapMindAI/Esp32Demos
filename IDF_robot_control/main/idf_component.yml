@@ -1,0 +1,8 @@
+dependencies:
+  idf: '>=5.5'
+  esp-idf-lib/mcp23x17: ^1.1.9
+  ## Import needed components only
+  robot_canbus:
+    version: '*'
+    override_path: ../../submodules/robot_canbus
+    pre_release: true
