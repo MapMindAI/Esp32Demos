@@ -51,6 +51,7 @@ sudo systemctl start docker
 ```bash
 git clone <your-repo-url>
 cd Esp32Demos/webrtc_public_gateway
+cp .env.example .env
 ```
 
 Generate Janus/MQTT secrets and sync settings to gateway + firmware config:
@@ -74,6 +75,25 @@ cd /home/<your-user>/Esp32Demos/webrtc_public_gateway
 docker compose up -d --force-recreate
 docker compose ps
 ```
+
+<details>
+<summary>Aliyun docker may have problem pulling "canyan/janus-gateway:latest"</summary>
+
+change its docker sources. `vim /etc/docker/daemon.json`, and change "registry-mirrors"。
+```
+{
+  "registry-mirrors": [
+    "https://docker.xuanyuan.me",
+    "https://docker.1ms.run",
+    "https://docker.1panel.live",
+    "https://hub.rat.dev",
+    "https://docker-mirror.aigc2d.com",
+    "https://registry.dockermirror.com"
+  ]
+}
+```
+</details>
+
 
 Check logs:
 
