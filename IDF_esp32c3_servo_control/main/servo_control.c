@@ -189,7 +189,6 @@ void servo_control_canbus_message_handler(int dlc, const uint8_t* data) {
   bool changed = false;
 
   xSemaphoreTake(s_servo_lock, portMAX_DELAY);
-  note_servo_activity_locked();
 
   switch (cmd) {
     case CMD_SERVO_UP:
@@ -229,6 +228,8 @@ void servo_control_canbus_message_handler(int dlc, const uint8_t* data) {
     return;
   }
 
+  note_servo_activity_locked();
+  
   if (s_servo.lr_angle < SERVO_MIN_ANGLE) {
     s_servo.lr_angle = SERVO_MIN_ANGLE;
   } else if (s_servo.lr_angle > SERVO_MAX_ANGLE) {

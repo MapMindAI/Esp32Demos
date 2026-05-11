@@ -501,6 +501,23 @@
     return true;
   }
 
+  function installButtonPressEffects() {
+    const buttons = document.querySelectorAll('button');
+    buttons.forEach((btn) => {
+      const press = () => {
+        if (!btn.disabled) {
+          btn.classList.add('btn-pressed');
+        }
+      };
+      const release = () => btn.classList.remove('btn-pressed');
+      btn.addEventListener('pointerdown', press);
+      btn.addEventListener('pointerup', release);
+      btn.addEventListener('pointercancel', release);
+      btn.addEventListener('pointerleave', release);
+      btn.addEventListener('blur', release);
+    });
+  }
+
   function publishRobotSpeed(speedValue, forceImmediate = false) {
     if (!mqttClient || !mqttClient.connected) {
       return;
@@ -707,5 +724,6 @@
     ev.preventDefault();
     mqttPublishCommand('SERVO_STOP');
   });
+  installButtonPressEffects();
   syncMqttFromRoom();
 })();
