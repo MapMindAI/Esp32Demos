@@ -208,6 +208,25 @@ static bool ProcessServoConfigCommand(const char* cmd) {
   return true;
 }
 
+static bool ProcessMoveConfigCommand(const char* cmd) {
+  const char* prefix = "ROBOT_SPEED:";
+  const size_t prefix_len = 12;
+  if (strncmp(cmd, prefix, prefix_len) != 0) {
+    return false;
+  }
+
+  long speed = strtol(cmd + prefix_len, NULL, 10);
+  if (speed < 0) {
+    speed = 0;
+  } else if (speed > 255) {
+    speed = 255;
+  }
+  current_velocity_ = (uint32_t)speed;
+  AddMessageToSend(10, current_velocity_);
+  ESP_LOGI(TAG, "Robot velocity updated: %" PRIu32, current_velocity_);
+  return true;
+}
+
 static bool ProcessMoveCommand(const char* cmd) {
   if (is_cmd(cmd, "ROBOT_UP", "Up")) {
     AddMessageToSend(8, current_velocity_);
@@ -220,6 +239,12 @@ static bool ProcessMoveCommand(const char* cmd) {
     return true;
   } else if (is_cmd(cmd, "ROBOT_RIGHT", "Right")) {
     AddMessageToSend(6, current_velocity_);
+    return true;
+  } else if (is_cmd(cmd, "ROBOT_ROTATE_LEFT", "RotateLeft")) {
+    AddMessageToSend(7, current_velocity_);
+    return true;
+  } else if (is_cmd(cmd, "ROBOT_ROTATE_RIGHT", "RotateRight")) {
+    AddMessageToSend(9, current_velocity_);
     return true;
   } else if (is_cmd(cmd, "ROBOT_STOP", "Stop")) {
     AddMessageToSend(5, 0);
@@ -240,6 +265,10 @@ static int door_bell_on_cmd(esp_webrtc_custom_data_via_t via, uint8_t* data, int
   const char* cmd = (const char*)data;
 
   if (ProcessServoConfigCommand(cmd)) {
+    return 0;
+  }
+
+  if (ProcessMoveConfigCommand(cmd)) {
     return 0;
   }
 

@@ -27,12 +27,15 @@ typedef enum {
   MOTION_BACKWARD,
   MOTION_LEFT,
   MOTION_RIGHT,
+  MOTION_ROTATE_LEFT,
+  MOTION_ROTATE_RIGHT,
 } motion_cmd_t;
 
 static motion_cmd_t requested_motion_ = MOTION_STOP;
 static motion_cmd_t current_motion_ = MOTION_STOP;
 static int requested_speed_ = 0;
 static int current_speed_ = 0;
+static int configured_speed_ = DEFAULT_MOTOR_SPEED;
 
 static inline void motor_lock(void) {
   if (motor_lock_) {
@@ -152,8 +155,28 @@ static void turn_right(int speed) {
   set_motor_standby(true);
   set_a_direction(0);
   set_b_direction(1);
+  set_c_direction(1);
+  set_d_direction(0);
+  motor_set_speed(speed, speed, speed, speed);
+}
+
+static void rotate_left(int speed) {
+  // Mecanum yaw-left pattern (left pair reverse, right pair forward).
+  set_motor_standby(true);
+  set_a_direction(1);
+  set_b_direction(0);
   set_c_direction(0);
   set_d_direction(1);
+  motor_set_speed(speed, speed, speed, speed);
+}
+
+static void rotate_right(int speed) {
+  // Mecanum yaw-right pattern (left pair forward, right pair reverse).
+  set_motor_standby(true);
+  set_a_direction(0);
+  set_b_direction(1);
+  set_c_direction(1);
+  set_d_direction(0);
   motor_set_speed(speed, speed, speed, speed);
 }
 
@@ -173,6 +196,12 @@ static void apply_motion_direction(motion_cmd_t motion) {
     case MOTION_RIGHT:
       turn_right(0);
       break;
+    case MOTION_ROTATE_LEFT:
+      rotate_left(0);
+      break;
+    case MOTION_ROTATE_RIGHT:
+      rotate_right(0);
+      break;
     case MOTION_STOP:
     default:
       break;
@@ -180,6 +209,11 @@ static void apply_motion_direction(motion_cmd_t motion) {
 }
 
 static void set_motion_target_locked(motion_cmd_t motion, int speed) {
+  if (speed < 0) {
+    speed = 0;
+  } else if (speed > 255) {
+    speed = 255;
+  }
   requested_motion_ = motion;
   requested_speed_ = (motion == MOTION_STOP) ? 0 : speed;
 }
@@ -227,6 +261,18 @@ static void motor_control_task(void* arg) {
 
 static int64_t led_updated_time_ = 0;
 
+static int parse_speed_or_default(int len, const uint8_t* value) {
+  if (len >= 5) {
+    uint32_t v = 0;
+    memcpy(&v, value + 1, sizeof(v));
+    if (v > 255) {
+      v = 255;
+    }
+    return (int)v;
+  }
+  return configured_speed_;
+}
+
 static void HandleControlMessage(int len, const uint8_t* value, const char* source) {
   if (len <= 0 || value == NULL) {
     ESP_LOGW(TAG, "invalid message from %s", source);
@@ -236,30 +282,47 @@ static void HandleControlMessage(int len, const uint8_t* value, const char* sour
   motor_lock();
 
   uint8_t message_type = value[0];
+  const int speed = parse_speed_or_default(len, value);
   switch (message_type) {
     case 66:
       motor_unlock();
       esp_restart();  // Reboots the ESP32
       return;
     case 8: {
-      ESP_LOGI(TAG, "%s move front", source);
-      set_motion_target_locked(MOTION_FORWARD, DEFAULT_MOTOR_SPEED);
+      ESP_LOGI(TAG, "%s move front speed=%d", source, speed);
+      set_motion_target_locked(MOTION_FORWARD, speed);
     } break;
     case 2: {
-      ESP_LOGI(TAG, "%s move back", source);
-      set_motion_target_locked(MOTION_BACKWARD, DEFAULT_MOTOR_SPEED);
+      ESP_LOGI(TAG, "%s move back speed=%d", source, speed);
+      set_motion_target_locked(MOTION_BACKWARD, speed);
     } break;
     case 4: {
-      ESP_LOGI(TAG, "%s move left", source);
-      set_motion_target_locked(MOTION_LEFT, DEFAULT_MOTOR_SPEED);
+      ESP_LOGI(TAG, "%s strafe left speed=%d", source, speed);
+      set_motion_target_locked(MOTION_LEFT, speed);
     } break;
     case 5: {
       ESP_LOGI(TAG, "%s stop", source);
       set_motion_target_locked(MOTION_STOP, 0);
     } break;
     case 6: {
-      ESP_LOGI(TAG, "%s move right", source);
-      set_motion_target_locked(MOTION_RIGHT, DEFAULT_MOTOR_SPEED);
+      ESP_LOGI(TAG, "%s strafe right speed=%d", source, speed);
+      set_motion_target_locked(MOTION_RIGHT, speed);
+    } break;
+    case 7: {
+      ESP_LOGI(TAG, "%s rotate left speed=%d", source, speed);
+      set_motion_target_locked(MOTION_ROTATE_LEFT, speed);
+    } break;
+    case 9: {
+      ESP_LOGI(TAG, "%s rotate right speed=%d", source, speed);
+      set_motion_target_locked(MOTION_ROTATE_RIGHT, speed);
+    } break;
+    case 10: {
+      configured_speed_ = speed;
+      // Apply speed updates immediately when robot is already moving.
+      if (requested_motion_ != MOTION_STOP) {
+        requested_speed_ = configured_speed_;
+      }
+      ESP_LOGI(TAG, "%s speed update=%d", source, configured_speed_);
     } break;
     default: {
       ESP_LOG_BUFFER_HEX(TAG, value, len);

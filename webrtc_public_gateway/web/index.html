@@ -41,15 +41,20 @@
           <div class="section-title">Robot Control</div>
           <div class="hint" style="margin-bottom:8px;">Press and hold to move, release to stop.</div>
           <div style="display:grid;grid-template-columns:72px 72px 72px;grid-template-rows:48px 48px 48px;gap:8px;justify-content:start;align-items:center;">
-            <span></span>
+            <button id="robotRotateLeftBtn" disabled>Rotate L</button>
             <button id="robotUpBtn" disabled>Up</button>
-            <span></span>
+            <button id="robotRotateRightBtn" disabled>Rotate R</button>
             <button id="robotLeftBtn" disabled>Left</button>
             <button id="robotStopBtn" disabled>Stop</button>
             <button id="robotRightBtn" disabled>Right</button>
             <span></span>
             <button id="robotDownBtn" disabled>Down</button>
             <span></span>
+          </div>
+          <div style="margin-top:8px;margin-left:12px;display:flex;align-items:center;gap:8px;">
+            <span class="hint" style="color:#e2e8f0;">Velocity</span>
+            <input id="robotVelocitySlider" type="range" min="0" max="255" value="125" style="width:180px;padding:0;" disabled />
+            <span id="robotVelocityValue" class="hint" style="min-width:30px;color:#e2e8f0;">125</span>
           </div>
         </div>
 
