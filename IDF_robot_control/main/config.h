@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -30,3 +31,20 @@
 #define LED_LIGHT_OFF 0
 #define LED_LIGHT_ON 1
 #endif   // #if CONFIG_IDF_TARGET_ESP32C3
+
+
+// MCP2515 PINS
+#define PIN_NUM_MISO GPIO_NUM_25
+#define PIN_NUM_MOSI GPIO_NUM_26
+#define PIN_NUM_CLK  GPIO_NUM_32
+#define PIN_NUM_CS   GPIO_NUM_33
+// Set to GPIO number if MCP2515 RESET is wired; keep -1 if not connected.
+#define MCP2515_RESET_GPIO (-1)
+
+// MCP2515 bus settings
+#define MCP2515_XTAL_MHZ 8
+#define MCP2515_CAN_SPEED_KBPS 500
+
+// MCP2515 SPI settings (this does NOT change CAN bus bitrate)
+#define MCP2515_SPI_CLOCK_HZ 1000000
+#define MCP2515_DEBUG_ACCEPT_ALL 1

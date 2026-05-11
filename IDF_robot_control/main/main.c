@@ -13,20 +13,17 @@
 
 #include "esp_log.h"
 #include "esp_task_wdt.h"
-#include "robot_canbus.h"
+#include "mcp2515/mcp2515_canbus.h"
 
 #define TAG "[MKBOT]"
-
-#define CANBUS_RX_PIN  GPIO_NUM_26
-#define CANBUS_TX_PIN  GPIO_NUM_25
 
 void app_main(void) {
   ESP_LOGI(TAG, "Hello from MOKUKU ROBOT %s!", MOKUKU_VERSION);
   SetUpLed();
   InitMotorMcp23017();
 
-  SetCanbusMessageHandler(CansbusControlMessageCallback);
-  InitializeCanbus(CANBUS_RX_PIN, CANBUS_TX_PIN);
+  Mcp2515CanbusSetMessageHandler(CansbusControlMessageCallback);
+  Mcp2515CanbusInit();
 
   SetBleMessageHandler(ControlMessageCallback);
   ObdBleClientSetup();
