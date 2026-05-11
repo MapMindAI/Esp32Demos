@@ -1,6 +1,6 @@
 services:
   janus:
-    image: canyan/janus-gateway:latest
+    image: ${JANUS_IMAGE:-canyan/janus-gateway:latest}
     container_name: janus-gateway
     restart: unless-stopped
     network_mode: host

@@ -76,6 +76,17 @@ docker compose up -d --force-recreate
 docker compose ps
 ```
 
+ARM64 note:
+
+- `canyan/janus-gateway:latest` is amd64-only.
+- On ARM64 ECS, set `JANUS_IMAGE` in `.env` before `docker compose up`:
+
+```bash
+cd /home/<your-user>/Esp32Demos/webrtc_public_gateway
+sed -i 's|^JANUS_IMAGE=.*|JANUS_IMAGE=sucwangsr/janus-webrtc-gateway-docker:latest|' .env
+docker compose up -d --force-recreate
+```
+
 <details>
 <summary>Aliyun docker may have problem pulling "canyan/janus-gateway:latest"</summary>
 

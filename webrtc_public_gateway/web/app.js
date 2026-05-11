@@ -12,6 +12,8 @@
   let mqttClient = null;
   let heartbeatTimer = null;
   let pendingWebrtcOpen = false;
+  let stallWindowStartMs = 0;
+  let stallCountInWindow = 0;
   let lastRobotSpeedPublishMs = 0;
   let robotSpeedPublishTimer = null;
   let pendingRobotSpeedValue = null;
@@ -52,7 +54,8 @@
 
   const setStatus = (msg) => { statusEl.textContent = msg; };
   const setMqttStatus = (msg) => { mqttStatusEl.textContent = msg; };
-  const VIDEO_STALL_TIMEOUT_MS = 8000;
+  const VIDEO_STALL_TIMEOUT_MS = 20000;
+  const VIDEO_STALL_WINDOW_MS = 45000;
 
   function appendMqttLog(line) {
     const ts = new Date().toLocaleTimeString();
@@ -83,6 +86,8 @@
     prevStatsTs = 0;
     lastVideoRxMs = 0;
     videoStalled = false;
+    stallWindowStartMs = 0;
+    stallCountInWindow = 0;
     videoEl.srcObject = null;
     connectBtn.disabled = false;
     disconnectBtn.disabled = true;
@@ -159,6 +164,8 @@
         videoEl.play().catch(() => {});
         lastVideoRxMs = Date.now();
         videoStalled = false;
+        stallWindowStartMs = 0;
+        stallCountInWindow = 0;
         setStatus('Streaming from ESP32');
         startConnectionQualityLogs();
       },
@@ -179,6 +186,8 @@
         prevStatsTs = 0;
         lastVideoRxMs = 0;
         videoStalled = false;
+        stallWindowStartMs = 0;
+        stallCountInWindow = 0;
         subscriberHandle = null;
       },
     });
@@ -242,14 +251,41 @@
         videoStalled = true;
         const errMsg = `Video stalled: no inbound video for ${Math.round(VIDEO_STALL_TIMEOUT_MS / 1000)}s`;
         console.error(`[webrtc] ${errMsg}`);
-        appendMqttLog(`ERROR ${errMsg}`);
+        const now = Date.now();
+        if ((now - stallWindowStartMs) > VIDEO_STALL_WINDOW_MS) {
+          stallWindowStartMs = now;
+          stallCountInWindow = 0;
+        }
+        stallCountInWindow += 1;
+
+        if (stallCountInWindow <= 2) {
+          appendMqttLog(`WARN ${errMsg}; attempting local re-subscribe (${stallCountInWindow}/2)`);
+          const roomId = parseInt(roomIdEl.value, 10);
+          const roomPin = roomPinEl.value.trim();
+          if (subscriberHandle) {
+            subscriberHandle.detach();
+            subscriberHandle = null;
+          }
+          selectedFeedId = null;
+          if (Number.isFinite(roomId) && managerHandle) {
+            requestAndAttachPublisher(roomId, roomPin);
+            setStatus(`${errMsg}; recovering stream...`);
+          } else {
+            appendMqttLog('WARN local re-subscribe skipped: manager/room unavailable');
+          }
+          lastVideoRxMs = Date.now();
+          videoStalled = false;
+          return;
+        }
+
+        appendMqttLog(`ERROR ${errMsg}; restarting WebRTC session`);
         const cmdTopic = mqttCmdTopicEl.value.trim();
         if (mqttClient && mqttClient.connected && cmdTopic) {
           mqttClient.publish(cmdTopic, 'CLOSE_WEBRTC');
           appendMqttLog(`TX ${cmdTopic}: CLOSE_WEBRTC`);
         }
         await destroySession();
-        setStatus(`${errMsg}; WebRTC closed.`);
+        setStatus(`${errMsg}; WebRTC restarted by controller.`);
         return;
       }
     } catch (err) {

@@ -60,6 +60,18 @@ docker compose up -d
 
 - `http://<your-linux-host-ip>:8080/janus`
 
+ARM64 note:
+
+- If your host is ARM64 and you see image platform mismatch warnings, set `JANUS_IMAGE` in `.env` to an ARM64/multi-arch Janus image, then restart compose.
+- Example:
+
+```bash
+cd webrtc_public_gateway
+cp .env.example .env  # if not yet created
+sed -i 's|^JANUS_IMAGE=.*|JANUS_IMAGE=sucwangsr/janus-webrtc-gateway-docker:latest|' .env
+docker compose up -d --force-recreate
+```
+
 Notes:
 - `nat_1_1_mapping` is intentionally disabled in `janus.jcfg` for local testing.
 - For cloud/public Internet testing, re-enable `nat_1_1_mapping` with the real public IP and use HTTPS/WSS via your domain.
