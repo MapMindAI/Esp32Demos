@@ -6,13 +6,9 @@ This repo is an ESP-IDF workspace for a 3-controller robot system:
 2. ESP32-C3: camera pan/tilt servo controller (via CAN)
 3. ESP32 (classic): mecanum robot moving platform controller (via CAN + motor driver)
 
-![Robot System Overview](assets/diagrams/robot_system_overview.svg)
+![Robot display](assets/display.jpg)
 
-![CAN Topology](assets/diagrams/can_bus_topology.svg)
-
-![Robot Platform Wiring](assets/diagrams/robot_platform_wiring.svg)
-
-https://github.com/user-attachments/assets/2f8988e1-435c-417a-9031-e2dc0ea89c77
+![Web display](assets/display_web.jpg)
 
 ## Main capabilities
 
@@ -30,6 +26,14 @@ https://github.com/user-attachments/assets/2f8988e1-435c-417a-9031-e2dc0ea89c77
 - `IDF_robot_control/`: ESP32 firmware (CAN/BLE receiver, mecanum motor control)
 - `webrtc_public_gateway/`: Janus + Caddy + Mosquitto gateway and web UI
 - `submodules/robot_canbus/`: shared CAN helper module
+
+
+![Robot System Overview](assets/diagrams/robot_system_overview.svg)
+
+![CAN Topology](assets/diagrams/can_bus_topology.svg)
+
+![Robot Platform Wiring](assets/diagrams/robot_platform_wiring.svg)
+
 
 ## Quick start
 
