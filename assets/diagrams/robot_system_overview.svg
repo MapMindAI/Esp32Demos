@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs>
+    <style>
+      .bg { fill: #0b1220; }
+      .title { fill: #e2e8f0; font: 700 38px 'Segoe UI', Arial, sans-serif; }
+      .sub { fill: #93c5fd; font: 500 20px 'Segoe UI', Arial, sans-serif; }
+      .box { rx: 18; ry: 18; stroke-width: 2; }
+      .b1 { fill: #1f2937; stroke: #60a5fa; }
+      .b2 { fill: #1b2a1f; stroke: #34d399; }
+      .b3 { fill: #2b1f1f; stroke: #f59e0b; }
+      .txt { fill: #e5e7eb; font: 600 24px 'Segoe UI', Arial, sans-serif; }
+      .small { fill: #cbd5e1; font: 400 18px 'Segoe UI', Arial, sans-serif; }
+      .arrow1 { stroke: #60a5fa; stroke-width: 4; fill: none; marker-end: url(#m1); }
+      .arrow2 { stroke: #22c55e; stroke-width: 4; fill: none; marker-end: url(#m2); }
+      .arrow3 { stroke: #f59e0b; stroke-width: 4; fill: none; marker-end: url(#m3); }
+    </style>
+    <marker id="m1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#60a5fa"/>
+    </marker>
+    <marker id="m2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#22c55e"/>
+    </marker>
+    <marker id="m3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="760"/>
+  <text class="title" x="58" y="70">ESP32 Robot System (3 Controllers)</text>
+  <text class="sub" x="58" y="106">Web UI -> MQTT/WebRTC -> ESP32-P4 -> CAN -> Servo + Robot Base</text>
+
+  <rect class="box b1" x="70" y="180" width="300" height="180"/>
+  <text class="txt" x="95" y="235">Web Control UI</text>
+  <text class="small" x="95" y="272">- Live video preview</text>
+  <text class="small" x="95" y="300">- Robot + servo commands</text>
+  <text class="small" x="95" y="328">- Speed slider</text>
+
+  <rect class="box b1" x="455" y="165" width="370" height="210"/>
+  <text class="txt" x="485" y="220">ESP32-P4</text>
+  <text class="small" x="485" y="255">WebRTC publisher + MQTT bridge</text>
+  <text class="small" x="485" y="283">CAN sender for motion/servo commands</text>
+  <text class="small" x="485" y="311">Publishes ROOM_ID/status + wifi_rssi</text>
+  <text class="small" x="485" y="339">CAN pins: RX=GPIO26, TX=GPIO27</text>
+
+  <rect class="box b2" x="940" y="120" width="280" height="220"/>
+  <text class="txt" x="965" y="175">ESP32-C3</text>
+  <text class="small" x="965" y="210">Camera pan/tilt controller</text>
+  <text class="small" x="965" y="238">CAN RX=GPIO5, TX=GPIO6</text>
+  <text class="small" x="965" y="266">Servo LR=GPIO4, UD=GPIO3</text>
+  <text class="small" x="965" y="294">Idle power-save supported</text>
+
+  <rect class="box b3" x="900" y="430" width="320" height="230"/>
+  <text class="txt" x="930" y="485">ESP32 Robot Base</text>
+  <text class="small" x="930" y="520">Mecanum wheel controller</text>
+  <text class="small" x="930" y="548">CAN RX=GPIO26, TX=GPIO25</text>
+  <text class="small" x="930" y="576">MCP23017 + 4 PWM channels</text>
+  <text class="small" x="930" y="604">Smooth accel/decel + rotate</text>
+
+  <path class="arrow1" d="M370 260 C420 260, 430 260, 455 260"/>
+  <text class="small" x="383" y="245" fill="#93c5fd">MQTT commands</text>
+
+  <path class="arrow1" d="M455 300 C430 300, 420 300, 370 300"/>
+  <text class="small" x="377" y="330" fill="#93c5fd">status + wifi_rssi</text>
+
+  <path class="arrow2" d="M825 250 C865 250, 890 230, 940 220"/>
+  <text class="small" x="834" y="215" fill="#86efac">CAN (servo cmds)</text>
+
+  <path class="arrow3" d="M790 335 C860 420, 880 470, 900 510"/>
+  <text class="small" x="792" y="415" fill="#fcd34d">CAN (robot cmds + speed)</text>
+</svg>

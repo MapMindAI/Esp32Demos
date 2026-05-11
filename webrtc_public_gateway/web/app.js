@@ -12,6 +12,9 @@
   let mqttClient = null;
   let heartbeatTimer = null;
   let pendingWebrtcOpen = false;
+  let lastRobotSpeedPublishMs = 0;
+  let robotSpeedPublishTimer = null;
+  let pendingRobotSpeedValue = null;
 
   const statusEl = document.getElementById('status');
   const videoEl = document.getElementById('remoteVideo');
@@ -35,6 +38,10 @@
   const robotLeftBtn = document.getElementById('robotLeftBtn');
   const robotRightBtn = document.getElementById('robotRightBtn');
   const robotStopBtn = document.getElementById('robotStopBtn');
+  const robotRotateLeftBtn = document.getElementById('robotRotateLeftBtn');
+  const robotRotateRightBtn = document.getElementById('robotRotateRightBtn');
+  const robotVelocitySlider = document.getElementById('robotVelocitySlider');
+  const robotVelocityValue = document.getElementById('robotVelocityValue');
   const servoUpBtn = document.getElementById('servoUpBtn');
   const servoDownBtn = document.getElementById('servoDownBtn');
   const servoLeftBtn = document.getElementById('servoLeftBtn');
@@ -325,12 +332,16 @@
       robotLeftBtn.disabled = false;
       robotRightBtn.disabled = false;
       robotStopBtn.disabled = false;
+      robotRotateLeftBtn.disabled = false;
+      robotRotateRightBtn.disabled = false;
+      robotVelocitySlider.disabled = false;
       servoUpBtn.disabled = false;
       servoDownBtn.disabled = false;
       servoLeftBtn.disabled = false;
       servoRightBtn.disabled = false;
       servoStopBtn.disabled = false;
       servoStepSlider.disabled = false;
+      mqttPublishCommand(`ROBOT_SPEED:${robotVelocitySlider.value}`);
       mqttPublishCommand(`SERVO_STEP:${servoStepSlider.value}`);
       mqttClient.subscribe(memTopic, { qos: 0 }, (err) => {
         if (err) {
@@ -369,6 +380,9 @@
       robotLeftBtn.disabled = true;
       robotRightBtn.disabled = true;
       robotStopBtn.disabled = true;
+      robotRotateLeftBtn.disabled = true;
+      robotRotateRightBtn.disabled = true;
+      robotVelocitySlider.disabled = true;
       servoUpBtn.disabled = true;
       servoDownBtn.disabled = true;
       servoLeftBtn.disabled = true;
@@ -376,6 +390,11 @@
       servoStopBtn.disabled = true;
       servoStepSlider.disabled = true;
       pendingWebrtcOpen = false;
+      if (robotSpeedPublishTimer) {
+        clearTimeout(robotSpeedPublishTimer);
+        robotSpeedPublishTimer = null;
+      }
+      pendingRobotSpeedValue = null;
       if (heartbeatTimer) {
         clearInterval(heartbeatTimer);
         heartbeatTimer = null;
@@ -417,6 +436,11 @@
       mqttClient.end(true);
       mqttClient = null;
     }
+    if (robotSpeedPublishTimer) {
+      clearTimeout(robotSpeedPublishTimer);
+      robotSpeedPublishTimer = null;
+    }
+    pendingRobotSpeedValue = null;
     mqttConnectBtn.disabled = false;
     mqttDisconnectBtn.disabled = true;
     mqttSendBtn.disabled = true;
@@ -425,6 +449,9 @@
     robotLeftBtn.disabled = true;
     robotRightBtn.disabled = true;
     robotStopBtn.disabled = true;
+    robotRotateLeftBtn.disabled = true;
+    robotRotateRightBtn.disabled = true;
+    robotVelocitySlider.disabled = true;
     servoUpBtn.disabled = true;
     servoDownBtn.disabled = true;
     servoLeftBtn.disabled = true;
@@ -472,6 +499,56 @@
       }
     });
     return true;
+  }
+
+  function installButtonPressEffects() {
+    const buttons = document.querySelectorAll('button');
+    buttons.forEach((btn) => {
+      const press = () => {
+        if (!btn.disabled) {
+          btn.classList.add('btn-pressed');
+        }
+      };
+      const release = () => btn.classList.remove('btn-pressed');
+      btn.addEventListener('pointerdown', press);
+      btn.addEventListener('pointerup', release);
+      btn.addEventListener('pointercancel', release);
+      btn.addEventListener('pointerleave', release);
+      btn.addEventListener('blur', release);
+    });
+  }
+
+  function publishRobotSpeed(speedValue, forceImmediate = false) {
+    if (!mqttClient || !mqttClient.connected) {
+      return;
+    }
+    const now = Date.now();
+    const throttleMs = 120;
+    const publish = (value) => {
+      mqttPublishCommand(`ROBOT_SPEED:${value}`);
+      lastRobotSpeedPublishMs = Date.now();
+    };
+
+    if (forceImmediate || (now - lastRobotSpeedPublishMs) >= throttleMs) {
+      if (robotSpeedPublishTimer) {
+        clearTimeout(robotSpeedPublishTimer);
+        robotSpeedPublishTimer = null;
+      }
+      pendingRobotSpeedValue = null;
+      publish(speedValue);
+      return;
+    }
+
+    pendingRobotSpeedValue = speedValue;
+    if (!robotSpeedPublishTimer) {
+      robotSpeedPublishTimer = setTimeout(() => {
+        robotSpeedPublishTimer = null;
+        if (pendingRobotSpeedValue !== null) {
+          publish(pendingRobotSpeedValue);
+          pendingRobotSpeedValue = null;
+        }
+      }, throttleMs - (now - lastRobotSpeedPublishMs));
+    }
   }
 
   function bindControlButton(btn, cmd, stopCmd) {
@@ -625,9 +702,19 @@
   bindControlButton(robotDownBtn, 'ROBOT_DOWN', 'ROBOT_STOP');
   bindControlButton(robotLeftBtn, 'ROBOT_LEFT', 'ROBOT_STOP');
   bindControlButton(robotRightBtn, 'ROBOT_RIGHT', 'ROBOT_STOP');
+  bindControlButton(robotRotateLeftBtn, 'ROBOT_ROTATE_LEFT', 'ROBOT_STOP');
+  bindControlButton(robotRotateRightBtn, 'ROBOT_ROTATE_RIGHT', 'ROBOT_STOP');
   robotStopBtn.addEventListener('click', (ev) => {
     ev.preventDefault();
     mqttPublishCommand('ROBOT_STOP');
+  });
+  robotVelocityValue.textContent = robotVelocitySlider.value;
+  robotVelocitySlider.addEventListener('input', () => {
+    robotVelocityValue.textContent = robotVelocitySlider.value;
+    publishRobotSpeed(robotVelocitySlider.value, false);
+  });
+  robotVelocitySlider.addEventListener('change', () => {
+    publishRobotSpeed(robotVelocitySlider.value, true);
   });
   bindControlButton(servoUpBtn, 'SERVO_UP', 'SERVO_STOP');
   bindControlButton(servoDownBtn, 'SERVO_DOWN', 'SERVO_STOP');
@@ -637,5 +724,6 @@
     ev.preventDefault();
     mqttPublishCommand('SERVO_STOP');
   });
+  installButtonPressEffects();
   syncMqttFromRoom();
 })();

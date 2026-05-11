@@ -241,18 +241,27 @@ static void mqtt_control_cmd_handler(const char *cmd, void *ctx) {
   }
 }
 
+static int get_wifi_rssi_dbm(void) {
+  wifi_ap_record_t ap_info = {0};
+  if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+    return ap_info.rssi;
+  }
+  return -127;
+}
+
 static void publish_webrtc_status(const char *state, const char *reason) {
-  char payload[160];
+  char payload[220];
   bool running = webrtc_is_running();
   bool connected = webrtc_is_connected();
+  int wifi_rssi = get_wifi_rssi_dbm();
   if (reason && reason[0]) {
     snprintf(payload, sizeof(payload),
-             "{\"webrtc\":\"%s\",\"running\":%s,\"connected\":%s,\"reason\":\"%s\"}",
-             state, running ? "true" : "false", connected ? "true" : "false", reason);
+             "{\"webrtc\":\"%s\",\"running\":%s,\"connected\":%s,\"wifi_rssi\":%d,\"reason\":\"%s\"}",
+             state, running ? "true" : "false", connected ? "true" : "false", wifi_rssi, reason);
   } else {
     snprintf(payload, sizeof(payload),
-             "{\"webrtc\":\"%s\",\"running\":%s,\"connected\":%s}",
-             state, running ? "true" : "false", connected ? "true" : "false");
+             "{\"webrtc\":\"%s\",\"running\":%s,\"connected\":%s,\"wifi_rssi\":%d}",
+             state, running ? "true" : "false", connected ? "true" : "false", wifi_rssi);
   }
   mqtt_bridge_publish_json("status", payload);
 }

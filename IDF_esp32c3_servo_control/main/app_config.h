@@ -14,6 +14,9 @@
 #define SERVO_LR_INVERT 1
 #define SERVO_UD_INVERT 1
 
-// Power saving: disable PWM output on SERVO_STOP to reduce holding current.
+// Power saving: disable PWM output after command inactivity timeout.
 // Tradeoff: servo will not hold torque while idle.
 #define SERVO_POWER_SAVE_WHEN_IDLE 1
+
+// Auto power-save timeout when no servo command is received (milliseconds).
+#define SERVO_IDLE_POWER_SAVE_TIMEOUT_MS 3000
