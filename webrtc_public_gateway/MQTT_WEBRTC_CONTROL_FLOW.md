@@ -43,9 +43,15 @@ Commands sent to `ROOM_ID/command`:
 
 ### Heartbeat timeout
 
-- If WebRTC is running and no heartbeat is received for `WEBRTC_HEARTBEAT_TIMEOUT_MS` (currently 15s):
+- If WebRTC is running and no heartbeat is received for `WEBRTC_HEARTBEAT_TIMEOUT_MS` (currently 45s):
   - stop WebRTC.
   - publish status including reason: `{"webrtc":"stopped","running":false,"connected":false,"reason":"heartbeat_timeout"}`.
+
+### Auto recovery for stuck connecting
+
+- If WebRTC remains running but not connected for too long after recent open/heartbeat, ESP32-P4 performs an auto restart.
+- Recovery status reason is published as:
+  - `{"webrtc":"connecting","reason":"auto_recover_restart", ...}`
 
 ### Status publish
 
@@ -81,6 +87,12 @@ On MQTT disconnect:
 
 - Web client automatically tears down Janus/WebRTC session (`destroySession()`).
 - This prevents stale WebRTC session if control channel is lost.
+
+Web stall behavior:
+
+- Viewer now waits longer before declaring stall (20s).
+- First two stalls in a short window trigger local re-subscribe recovery.
+- Only repeated stalls escalate to `CLOSE_WEBRTC`.
 
 ## Key Files
 
