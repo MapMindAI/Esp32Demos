@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="520" viewBox="0 0 1280 520">
+  <defs>
+    <style>
+      .bg { fill: #0b1220; }
+      .title { fill: #e2e8f0; font: 700 34px 'Segoe UI', Arial, sans-serif; }
+      .note { fill: #cbd5e1; font: 400 18px 'Segoe UI', Arial, sans-serif; }
+      .node { fill: #1f2937; stroke: #64748b; stroke-width: 2; rx: 14; ry: 14; }
+      .label { fill: #f8fafc; font: 600 22px 'Segoe UI', Arial, sans-serif; }
+      .sub { fill: #cbd5e1; font: 400 16px 'Segoe UI', Arial, sans-serif; }
+      .bus { stroke: #22c55e; stroke-width: 7; }
+      .gnd { stroke: #94a3b8; stroke-width: 4; stroke-dasharray: 10 8; }
+      .term { fill: #334155; stroke: #e2e8f0; stroke-width: 2; rx: 8; ry: 8; }
+      .warn { fill: #fde68a; font: 700 18px 'Segoe UI', Arial, sans-serif; }
+    </style>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1280" height="520"/>
+
+  <text class="title" x="50" y="64">CAN Bus Topology (3 Nodes + 2 Terminators)</text>
+  <text class="note" x="50" y="95">Use exactly two 120 ohm termination resistors: one at each physical end of the CAN trunk.</text>
+
+  <line class="bus" x1="120" y1="230" x2="1160" y2="230"/>
+  <line class="bus" x1="120" y1="270" x2="1160" y2="270"/>
+  <text class="label" x="66" y="236" fill="#86efac">CANH</text>
+  <text class="label" x="66" y="276" fill="#86efac">CANL</text>
+
+  <line class="gnd" x1="120" y1="315" x2="1160" y2="315"/>
+  <text class="label" x="74" y="321">GND</text>
+
+  <rect class="term" x="80" y="205" width="36" height="90"/>
+  <rect class="term" x="1164" y="205" width="36" height="90"/>
+  <text class="sub" x="58" y="192">120 ohm</text>
+  <text class="sub" x="1138" y="192">120 ohm</text>
+
+  <rect class="node" x="240" y="360" width="250" height="120"/>
+  <text class="label" x="262" y="404">ESP32-P4 Node</text>
+  <text class="sub" x="262" y="430">TX=GPIO27, RX=GPIO26</text>
+  <line x1="365" y1="360" x2="365" y2="270" stroke="#60a5fa" stroke-width="3"/>
+  <line x1="340" y1="360" x2="340" y2="315" stroke="#94a3b8" stroke-width="3"/>
+
+  <rect class="node" x="530" y="360" width="250" height="120"/>
+  <text class="label" x="565" y="404">ESP32-C3 Node</text>
+  <text class="sub" x="560" y="430">TX=GPIO6, RX=GPIO5</text>
+  <line x1="655" y1="360" x2="655" y2="270" stroke="#34d399" stroke-width="3"/>
+  <line x1="630" y1="360" x2="630" y2="315" stroke="#94a3b8" stroke-width="3"/>
+
+  <rect class="node" x="820" y="360" width="300" height="120"/>
+  <text class="label" x="848" y="404">ESP32 Robot Node</text>
+  <text class="sub" x="848" y="430">TX=GPIO25, RX=GPIO26</text>
+  <line x1="965" y1="360" x2="965" y2="270" stroke="#f59e0b" stroke-width="3"/>
+  <line x1="940" y1="360" x2="940" y2="315" stroke="#94a3b8" stroke-width="3"/>
+
+  <text class="warn" x="50" y="475">All nodes must share common ground.</text>
+</svg>

@@ -1,102 +1,96 @@
 # ESP32-Robot-WebRTC
 
-This repo is an end-to-end ESP-IDF demo workspace for building a small remote-controlled robot / device prototype with:
+This repo is an ESP-IDF workspace for a 3-controller robot system:
 
-- ESP32-P4 WebRTC video/audio streaming
-- Browser-based control page
-- MQTT command bridge
-- CAN bus command forwarding
-- ESP32-C3 CAN receiver and dual-servo controller
-- Local Docker gateway stack based on Janus, Caddy, and Mosquitto
-- [Aliyun ECS Deployment Guide (WebRTC + MQTT Gateway)](webrtc_public_gateway/ALIYUN_ECS_DEPLOYMENT.md)
+1. ESP32-P4: WebRTC + MQTT/network bridge
+2. ESP32-C3: camera pan/tilt servo controller (via CAN)
+3. ESP32 (classic): mecanum robot moving platform controller (via CAN + motor driver)
 
-This repository is intended as a quick development entry point for experimenting with ESP32 WebRTC streaming, web-to-device control, and CAN/servo actuation in one integrated workflow.
+![Robot System Overview](assets/diagrams/robot_system_overview.svg)
 
-![display](assets/display.jpg)
+![CAN Topology](assets/diagrams/can_bus_topology.svg)
+
+![Robot Platform Wiring](assets/diagrams/robot_platform_wiring.svg)
 
 https://github.com/user-attachments/assets/2f8988e1-435c-417a-9031-e2dc0ea89c77
 
+## Main capabilities
+
+- Browser remote control with WebRTC video
+- MQTT command and status channel
+- MQTT -> CAN forwarding for robot motion and servo control
+- Adjustable robot speed (`ROBOT_SPEED`) propagated from web/MQTT to CAN receivers
+- WebRTC status publish to `ROOM_ID/status`, including `wifi_rssi`
+- Smooth robot acceleration/deceleration on motion commands
+
 ## Repo layout
 
-- `IDF_esp32p4_webrtc/`: ESP32-P4 WebRTC publisher firmware (camera/audio + MQTT command bridge).
-- `IDF_esp32c3_servo_control/`: ESP32-C3 CAN receiver + dual-servo controller.
-- `webrtc_public_gateway/`: Janus + Caddy + Mosquitto docker stack and web control page.
-- `submodules/robot_canbus/`: shared CAN bus helper module.
+- `IDF_esp32p4_webrtc/`: P4 firmware (WebRTC, MQTT bridge, CAN sender)
+- `IDF_esp32c3_servo_control/`: C3 firmware (CAN receiver, dual-servo control)
+- `IDF_robot_control/`: ESP32 firmware (CAN/BLE receiver, mecanum motor control)
+- `webrtc_public_gateway/`: Janus + Caddy + Mosquitto gateway and web UI
+- `submodules/robot_canbus/`: shared CAN helper module
 
+## Quick start
 
-## 1) One-command config bootstrap
-
-Generate Janus secrets and sync room settings into gateway + firmware `sdkconfig`:
+### 1) Bootstrap gateway + sdkconfig
 
 ```bash
 cd webrtc_public_gateway
-./scripts/bootstrap_janus_and_sdkconfig.sh --room-id 1234 --signal-url http://192.168.19.25:8080/janus --mqtt-broker-uri mqtt://192.168.19.25:1883
+./scripts/bootstrap_janus_and_sdkconfig.sh \
+  --room-id 1234 \
+  --signal-url http://192.168.19.25:8080/janus \
+  --mqtt-broker-uri mqtt://192.168.19.25:1883
 ```
 
-## 2) Start gateway stack
+### 2) Start gateway
 
 ```bash
 cd webrtc_public_gateway
 docker compose up -d --force-recreate
 ```
 
-Open:
+Open `http://<your-host-ip>:8080/`.
 
-- `http://<your-host-ip>:8080/`
-
-## 3) Flash ESP32-P4 WebRTC firmware
+### 3) Flash firmware
 
 ```bash
 source "$IDF_PATH/export.sh"
+
 cd IDF_esp32p4_webrtc
 idf.py build flash monitor
-```
 
-If serial port is not auto-detected:
+cd ../IDF_esp32c3_servo_control
+idf.py build flash monitor
 
-```bash
-idf.py -p /dev/ttyACM0 build flash monitor
-```
-
-## 4) Flash ESP32-C3 servo controller (optional)
-
-```bash
-source "$IDF_PATH/export.sh"
-cd IDF_esp32c3_servo_control
+cd ../IDF_robot_control
 idf.py build flash monitor
 ```
 
-Pin mapping is in:
+## Runtime data flow
 
-- `IDF_esp32c3_servo_control/main/app_config.h`
+1. Web app connects MQTT and sends `OPEN_WEBRTC` + `HEARTBEAT`.
+2. ESP32-P4 starts WebRTC and publishes status on `ROOM_ID/status`.
+3. Control commands (`ROBOT_*`, `SERVO_*`, `ROBOT_SPEED:*`, `SERVO_STEP:*`) are received by P4.
+4. P4 forwards control commands over CAN.
+5. ESP32-C3 handles servo commands.
+6. ESP32 robot controller handles movement commands.
 
-## 5) Runtime flow (current)
+## Hardware and wiring
 
-1. Open web page and connect MQTT.
-2. Web sends `OPEN_WEBRTC` + heartbeat.
-3. ESP32-P4 starts WebRTC and publishes status.
-4. Web attaches to Janus when status reports ready.
-5. Robot/Servo buttons send MQTT commands (`ROBOT_*`, `SERVO_*`) continuously while pressed.
-6. P4 forwards control commands to CAN.
-7. C3 receives CAN and drives servos.
+Detailed connection guide is in:
 
-## 6) Hardware
+- [Hardware Wiring Guide](docs/HARDWARE_WIRING.md)
 
-Recommended hardware setup:
+This includes:
 
-* ESP32-P4 development board with camera/audio support
-  * The default hardware setup uses the [ESP32P4-Function-Ev-Board](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32p4/esp32-p4-function-ev-board/user_guide.html), which includes an SC2336 camera.
-* ESP32-C3 development board
-* CAN transceiver modules for the ESP32-P4 and ESP32-C3 sides
-* One or two servos
-* External 5V power supply for servos
-* Common ground between ESP32-C3, servo power, and CAN transceiver
-* Host machine running Docker
+- pin-by-pin tables for all 3 controllers
+- CAN transceiver and termination rules
+- power and grounding recommendations
+- MCP23017 + motor driver wiring notes for robot base
 
-## 7) Detailed docs
+## Other docs
 
 - [Aliyun ECS Deployment Guide (WebRTC + MQTT Gateway)](webrtc_public_gateway/ALIYUN_ECS_DEPLOYMENT.md)
 - [Gateway details](webrtc_public_gateway/README.md)
 - [MQTT-Controlled WebRTC Flow](webrtc_public_gateway/MQTT_WEBRTC_CONTROL_FLOW.md)
-- ESP32-P4 project config/options: `IDF_esp32p4_webrtc/main/Kconfig`
-- ESP32-C3 app config: `IDF_esp32c3_servo_control/main/app_config.h`

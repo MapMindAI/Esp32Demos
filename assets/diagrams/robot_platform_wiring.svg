@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760">
+  <defs>
+    <style>
+      .bg { fill: #0b1220; }
+      .title { fill: #e2e8f0; font: 700 34px 'Segoe UI', Arial, sans-serif; }
+      .node { fill: #1f2937; stroke: #64748b; stroke-width: 2; rx: 14; ry: 14; }
+      .chip { fill: #1d2432; stroke: #93c5fd; stroke-width: 2; rx: 12; ry: 12; }
+      .motor { fill: #2b1f1f; stroke: #f59e0b; stroke-width: 2; rx: 12; ry: 12; }
+      .text { fill: #f8fafc; font: 600 22px 'Segoe UI', Arial, sans-serif; }
+      .sub { fill: #cbd5e1; font: 400 16px 'Segoe UI', Arial, sans-serif; }
+      .wire { stroke-width: 3; fill: none; }
+      .i2c { stroke: #22c55e; }
+      .pwm { stroke: #60a5fa; }
+      .logic { stroke: #f59e0b; }
+      .pwr { stroke: #ef4444; stroke-width: 4; }
+      .gnd { stroke: #94a3b8; stroke-width: 3; stroke-dasharray: 8 6; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1280" height="760"/>
+  <text class="title" x="52" y="62">Robot Moving Platform Wiring (ESP32 + MCP23017 + Motor Driver)</text>
+
+  <rect class="node" x="80" y="160" width="310" height="220"/>
+  <text class="text" x="104" y="205">ESP32 Robot Control</text>
+  <text class="sub" x="104" y="237">CAN TX=GPIO25, RX=GPIO26</text>
+  <text class="sub" x="104" y="261">I2C SDA=GPIO21, SCL=GPIO22</text>
+  <text class="sub" x="104" y="285">PWM A/B/C/D = GPIO16/17/18/19</text>
+
+  <rect class="chip" x="500" y="170" width="260" height="190"/>
+  <text class="text" x="535" y="214">MCP23017</text>
+  <text class="sub" x="535" y="246">I2C addr: 0x27</text>
+  <text class="sub" x="535" y="272">STBY + BINx logic outputs</text>
+  <text class="sub" x="535" y="298">pins 0..8 used by firmware</text>
+
+  <rect class="node" x="860" y="150" width="320" height="240"/>
+  <text class="text" x="890" y="195">4CH Motor Driver Stage</text>
+  <text class="sub" x="890" y="227">PWM inputs from ESP32</text>
+  <text class="sub" x="890" y="251">DIR/STBY from MCP23017</text>
+  <text class="sub" x="890" y="275">Drives A/B/C/D wheel motors</text>
+
+  <rect class="motor" x="860" y="470" width="140" height="90"/>
+  <rect class="motor" x="1040" y="470" width="140" height="90"/>
+  <rect class="motor" x="860" y="610" width="140" height="90"/>
+  <rect class="motor" x="1040" y="610" width="140" height="90"/>
+  <text class="sub" x="894" y="523">Motor A</text>
+  <text class="sub" x="1074" y="523">Motor B</text>
+  <text class="sub" x="894" y="663">Motor C</text>
+  <text class="sub" x="1074" y="663">Motor D</text>
+
+  <path class="wire i2c" d="M390 250 C445 250, 455 240, 500 235"/>
+  <path class="wire i2c" d="M390 278 C445 278, 455 268, 500 260"/>
+  <text class="sub" x="410" y="236" fill="#86efac">I2C SDA</text>
+  <text class="sub" x="410" y="292" fill="#86efac">I2C SCL</text>
+
+  <path class="wire pwm" d="M390 312 C540 340, 690 360, 860 300"/>
+  <text class="sub" x="540" y="350" fill="#93c5fd">PWM A/B/C/D</text>
+
+  <path class="wire logic" d="M760 250 C805 250, 820 250, 860 250"/>
+  <text class="sub" x="770" y="236" fill="#fcd34d">DIR/STBY</text>
+
+  <path class="wire logic" d="M1020 390 C1020 420, 930 440, 930 470"/>
+  <path class="wire logic" d="M1040 390 C1040 420, 1110 440, 1110 470"/>
+  <path class="wire logic" d="M980 390 C980 500, 930 540, 930 610"/>
+  <path class="wire logic" d="M1060 390 C1060 500, 1110 540, 1110 610"/>
+
+  <line class="pwr" x1="70" y1="86" x2="1210" y2="86"/>
+  <text class="sub" x="82" y="80" fill="#fecaca">+5V / +VM power rail (driver + motors + regulators)</text>
+
+  <line class="gnd" x1="70" y1="114" x2="1210" y2="114"/>
+  <text class="sub" x="82" y="136">Common GND between all boards, drivers, CAN transceivers, and power rails</text>
+</svg>
