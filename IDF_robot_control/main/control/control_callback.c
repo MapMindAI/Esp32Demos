@@ -155,8 +155,8 @@ static void turn_right(int speed) {
   set_motor_standby(true);
   set_a_direction(0);
   set_b_direction(1);
-  set_c_direction(1);
-  set_d_direction(0);
+  set_c_direction(0);
+  set_d_direction(1);
   motor_set_speed(speed, speed, speed, speed);
 }
 
