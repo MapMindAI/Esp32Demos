@@ -106,6 +106,9 @@ typedef struct {
     uint32_t aud_send_size;
     uint32_t aud_recv_size;
     uint32_t vid_recv_size;
+    uint32_t aud_send_fail_num;
+    uint32_t vid_send_fail_num;
+    uint32_t vid_drop_num;
     uint8_t  aud_send_num;
     uint8_t  vid_send_num;
     uint8_t  aud_recv_num;
@@ -130,13 +133,20 @@ static void _media_send(void *ctx)
                 .data = audio_frame.data,
                 .size = audio_frame.size,
             };
-            esp_peer_send_audio(rtc->pc, &audio_send_frame);
+            int ret = esp_peer_send_audio(rtc->pc, &audio_send_frame);
             esp_capture_sink_release_frame(rtc->capture_path, &audio_frame);
-            rtc->aud_send_pts = audio_frame.pts;
-            rtc->aud_send_num++;
-            rtc->aud_send_size += audio_frame.size;
-            if (webrtc_tracing) {
-                printf("A\n");
+            if (ret == ESP_PEER_ERR_NONE) {
+                rtc->aud_send_pts = audio_frame.pts;
+                rtc->aud_send_num++;
+                rtc->aud_send_size += audio_frame.size;
+                if (webrtc_tracing) {
+                    printf("A\n");
+                }
+            } else {
+                rtc->aud_send_fail_num++;
+                if ((rtc->aud_send_fail_num % 20) == 0) {
+                    ESP_LOGW(TAG, "Audio send pressure: fail=%d", (int)rtc->aud_send_fail_num);
+                }
             }
         }
     }
@@ -146,13 +156,14 @@ static void _media_send(void *ctx)
         };
         int ret = esp_capture_sink_acquire_frame(rtc->capture_path, &video_frame, true);
         if (ret == ESP_CAPTURE_ERR_OK) {
+            int send_ret = ESP_PEER_ERR_NONE;
             if (rtc->rtc_cfg.peer_cfg.enable_data_channel && rtc->rtc_cfg.peer_cfg.video_over_data_channel) {
                 esp_peer_data_frame_t data_frame = {
                     .type = ESP_PEER_DATA_CHANNEL_DATA,
                     .data = video_frame.data,
                     .size = video_frame.size,
                 };
-                esp_peer_send_data(rtc->pc, &data_frame);
+                send_ret = esp_peer_send_data(rtc->pc, &data_frame);
             } else {
                 esp_peer_video_frame_t video_send_frame = {
                     .pts = video_frame.pts,
@@ -168,15 +179,24 @@ static void _media_send(void *ctx)
                     }
                 }
                 if (should_send) {
-                    esp_peer_send_video(rtc->pc, &video_send_frame);
+                    send_ret = esp_peer_send_video(rtc->pc, &video_send_frame);
+                } else {
+                    rtc->vid_drop_num++;
                 }
             }
             esp_capture_sink_release_frame(rtc->capture_path, &video_frame);
-            rtc->vid_send_pts = video_frame.pts;
-            rtc->vid_send_num++;
-            rtc->vid_send_size += video_frame.size;
-            if (webrtc_tracing) {
-                printf("V\n");
+            if (send_ret == ESP_PEER_ERR_NONE) {
+                rtc->vid_send_pts = video_frame.pts;
+                rtc->vid_send_num++;
+                rtc->vid_send_size += video_frame.size;
+                if (webrtc_tracing) {
+                    printf("V\n");
+                }
+            } else if (send_ret != ESP_PEER_ERR_NONE) {
+                rtc->vid_send_fail_num++;
+                if ((rtc->vid_send_fail_num % 20) == 0) {
+                    ESP_LOGW(TAG, "Video send pressure: fail=%d drop=%d", (int)rtc->vid_send_fail_num, (int)rtc->vid_drop_num);
+                }
             }
         }
     }
@@ -948,13 +968,16 @@ int esp_webrtc_query(esp_webrtc_handle_t handle)
     }
     if (rtc->vid_send_num == 0) {
         // Audio only case
-        ESP_LOGI(TAG, "Send A:%d [%d:%d] Recv A:%d [%d:%d]",
+        ESP_LOGI(TAG, "Send A:%d [%d:%d fail:%d] Recv A:%d [%d:%d]",
                 (int)rtc->aud_send_pts, (int)rtc->aud_send_num, (int)rtc->aud_send_size,
+                (int)rtc->aud_send_fail_num,
                 (int)rtc->aud_recv_pts, (int)rtc->aud_recv_num, (int)rtc->aud_recv_size);
     } else {
-        ESP_LOGI(TAG, "Send A:%d [%d:%d] V:%d [%d:%d] Recv A:%d [%d:%d] Recv V:[%d:%d]",
+        ESP_LOGI(TAG, "Send A:%d [%d:%d fail:%d] V:%d [%d:%d fail:%d drop:%d] Recv A:%d [%d:%d] Recv V:[%d:%d]",
                 (int)rtc->aud_send_pts, (int)rtc->aud_send_num, (int)rtc->aud_send_size,
+                (int)rtc->aud_send_fail_num,
                 (int)rtc->vid_send_pts, (int)rtc->vid_send_num, (int)rtc->vid_send_size,
+                (int)rtc->vid_send_fail_num, (int)rtc->vid_drop_num,
                 (int)rtc->aud_recv_pts, (int)rtc->aud_recv_num, (int)rtc->aud_recv_size,
                 (int)rtc->vid_recv_num, (int)rtc->vid_recv_size);
     }
@@ -965,6 +988,9 @@ int esp_webrtc_query(esp_webrtc_handle_t handle)
     rtc->aud_send_num = 0;
     rtc->aud_send_size = 0;
     rtc->vid_send_size = 0;
+    rtc->aud_send_fail_num = 0;
+    rtc->vid_send_fail_num = 0;
+    rtc->vid_drop_num = 0;
     rtc->aud_recv_num = 0;
     rtc->aud_recv_size = 0;
     rtc->vid_recv_num = 0;

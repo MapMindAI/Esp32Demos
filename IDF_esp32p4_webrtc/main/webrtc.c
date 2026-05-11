@@ -15,6 +15,7 @@
 #include "esp_log.h"
 #include "esp_peer.h"
 #include "esp_peer_default.h"
+#include "esp_timer.h"
 #include "esp_webrtc.h"
 #include "esp_webrtc_defaults.h"
 #include "media_lib_os.h"
@@ -96,6 +97,54 @@ typedef struct {
 static rtp_transformer_ctx_t sender_transformer_ctx;
 static rtp_transformer_ctx_t receiver_transformer_ctx;
 static bool rtp_transformer_enabled = false;
+static int64_t webrtc_connected_since_ms = 0;
+static uint8_t video_bitrate_stage_ = 0;
+static int64_t last_video_sent_us_ = 0;
+static uint32_t video_pacing_drop_count_ = 0;
+
+static void reset_video_bitrate_ramp_state(void) {
+  webrtc_connected_since_ms = 0;
+  video_bitrate_stage_ = 0;
+  last_video_sent_us_ = 0;
+  video_pacing_drop_count_ = 0;
+}
+
+static void update_video_bitrate_ramp(void) {
+  if (!webrtc || !webrtc_connected || webrtc_connected_since_ms <= 0) {
+    return;
+  }
+  int64_t now_ms = esp_timer_get_time() / 1000;
+  int64_t elapsed_ms = now_ms - webrtc_connected_since_ms;
+  if (video_bitrate_stage_ == 0 && elapsed_ms >= WEBRTC_VIDEO_BITRATE_STEP_DELAY_MS) {
+    esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_STEP);
+    video_bitrate_stage_ = 1;
+    ESP_LOGI(TAG, "Video bitrate ramp stage1=%d after %" PRId64 "ms", WEBRTC_VIDEO_BITRATE_STEP, elapsed_ms);
+    return;
+  }
+  if (video_bitrate_stage_ == 1 && elapsed_ms >= WEBRTC_VIDEO_BITRATE_STABLE_DELAY_MS) {
+    esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_STABLE);
+    video_bitrate_stage_ = 2;
+    ESP_LOGI(TAG, "Video bitrate ramp stable=%d after %" PRId64 "ms", WEBRTC_VIDEO_BITRATE_STABLE, elapsed_ms);
+  }
+}
+
+static int door_bell_on_video_send(esp_peer_video_frame_t* frame, void* ctx) {
+  (void)frame;
+  (void)ctx;
+  int64_t now_us = esp_timer_get_time();
+  int64_t min_interval_us = 1000000 / WEBRTC_VIDEO_STREAM_FPS;
+  // Keep a small tolerance to smooth bursty source scheduling.
+  int64_t pacing_threshold_us = (min_interval_us * 80) / 100;
+  if (last_video_sent_us_ > 0 && (now_us - last_video_sent_us_) < pacing_threshold_us) {
+    video_pacing_drop_count_++;
+    if ((video_pacing_drop_count_ % 50) == 0) {
+      ESP_LOGW(TAG, "Video pacing drop count=%" PRIu32, video_pacing_drop_count_);
+    }
+    return -1;
+  }
+  last_video_sent_us_ = now_us;
+  return 0;
+}
 
 static void cleanup_webrtc_handle(void) {
   if (webrtc) {
@@ -587,15 +636,18 @@ static int webrtc_event_handler(esp_webrtc_event_t* event, void* ctx) {
   if (event->type == ESP_WEBRTC_EVENT_CONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_CONNECTED);
     webrtc_connected = true;
+    webrtc_connected_since_ms = esp_timer_get_time() / 1000;
+    video_bitrate_stage_ = 0;
     if (webrtc) {
-      esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_STABLE);
+      esp_webrtc_set_video_bitrate(webrtc, WEBRTC_VIDEO_BITRATE_START);
       esp_webrtc_set_audio_bitrate(webrtc, WEBRTC_AUDIO_BITRATE);
-      ESP_LOGI(TAG, "Applied stable bitrate profile: video=%d audio=%d", WEBRTC_VIDEO_BITRATE_STABLE,
+      ESP_LOGI(TAG, "Applied startup bitrate profile: video=%d audio=%d", WEBRTC_VIDEO_BITRATE_START,
                WEBRTC_AUDIO_BITRATE);
     }
   } else if (event->type == ESP_WEBRTC_EVENT_CONNECT_FAILED || event->type == ESP_WEBRTC_EVENT_DISCONNECTED) {
     door_bell_change_state(DOOR_BELL_STATE_NONE);
     webrtc_connected = false;
+    reset_video_bitrate_ramp_state();
     // Reset transformer contexts
     memset(&sender_transformer_ctx, 0, sizeof(sender_transformer_ctx));
     memset(&receiver_transformer_ctx, 0, sizeof(receiver_transformer_ctx));
@@ -696,7 +748,12 @@ int start_webrtc(char* url) {
 #endif
 
   esp_peer_default_cfg_t peer_cfg = {
-      .agent_recv_timeout = 1200,
+      .agent_recv_timeout = WEBRTC_AGENT_RECV_TIMEOUT_MS,
+      .rtp_cfg = {
+          .send_pool_size = WEBRTC_RTP_SEND_POOL_SIZE,
+          .send_queue_num = WEBRTC_RTP_SEND_QUEUE_NUM,
+          .max_resend_count = WEBRTC_RTP_MAX_RESEND_COUNT,
+      },
   };
   esp_webrtc_cfg_t cfg = {
       .peer_cfg =
@@ -718,7 +775,7 @@ int start_webrtc(char* url) {
                       .codec = ESP_PEER_VIDEO_CODEC_H264,
                       .width = VIDEO_WIDTH,
                       .height = VIDEO_HEIGHT,
-                      .fps = VIDEO_FPS,
+                      .fps = WEBRTC_VIDEO_STREAM_FPS,
                   },
               .audio_dir = ESP_PEER_MEDIA_DIR_SEND_ONLY,
               .video_dir = ESP_PEER_MEDIA_DIR_SEND_ONLY,
@@ -729,6 +786,7 @@ int start_webrtc(char* url) {
               .on_channel_close = webrtc_data_channel_closed,
               .enable_data_channel = true,
               .manual_ch_create = true,   // If work as SCTP client disable create data channel automatically
+              .on_video_send = door_bell_on_video_send,
               .no_auto_reconnect =
 #if CONFIG_DOORBELL_SIGNALING_JANUS
                   false,  // Janus test mode: auto connect without ACCEPT_CALL gating
@@ -812,6 +870,7 @@ int start_webrtc(char* url) {
 void query_webrtc(void) {
   if (webrtc) {
     esp_webrtc_query(webrtc);
+    update_video_bitrate_ramp();
   }
 }
 
@@ -820,6 +879,7 @@ int stop_webrtc(void) {
   janus_retry_stop = true;
 #endif
   webrtc_connected = false;
+  reset_video_bitrate_ramp_state();
   cleanup_webrtc_handle();
   return 0;
 }

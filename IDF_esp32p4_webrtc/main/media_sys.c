@@ -138,7 +138,8 @@ static esp_capture_video_src_if_t* create_video_source(void) {
   }
   esp_capture_video_v4l2_src_cfg_t v4l2_cfg = {
       .dev_name = "/dev/video0",
-      .buf_count = 2,
+      // Extra capture buffers smooth encoder/scheduler jitter and reduce frame drops.
+      .buf_count = 4,
   };
   return esp_capture_new_video_v4l2_src(&v4l2_cfg);
 #endif
@@ -225,6 +226,9 @@ static int build_player_system() {
 
 int media_sys_buildup(void) {
   ESP_LOGI(TAG, "media_sys_buildup");
+#if !CONFIG_ESP_VIDEO_ENABLE_HW_H264_VIDEO_DEVICE
+  ESP_LOGW(TAG, "HW H264 video device is disabled in sdkconfig; 1080p stream may drop frames under load.");
+#endif
   // Register for default audio and video codecs
   esp_video_enc_register_default();
   esp_audio_enc_register_default();

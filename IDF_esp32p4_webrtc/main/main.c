@@ -173,7 +173,7 @@ static int init_console() {
 static void thread_scheduler(const char* thread_name, media_lib_thread_cfg_t* schedule_cfg) {
   if (strcmp(thread_name, "venc_0") == 0) {
     // For H264 may need huge stack if use hardware encoder can set it to small value
-    schedule_cfg->priority = 10;
+    schedule_cfg->priority = 13;
 #if CONFIG_IDF_TARGET_ESP32S3
     schedule_cfg->stack_size = 20 * 1024;
 #endif
@@ -188,6 +188,11 @@ static void thread_scheduler(const char* thread_name, media_lib_thread_cfg_t* sc
 #endif
   else if (strcmp(thread_name, "AUD_SRC") == 0) {
     schedule_cfg->priority = 15;
+  } else if (strcmp(thread_name, "pc_send") == 0) {
+    // Keep RTP sender responsive to avoid bursty enqueue and dropped video frames.
+    schedule_cfg->stack_size = 8 * 1024;
+    schedule_cfg->priority = 17;
+    schedule_cfg->core_id = 1;
   } else if (strcmp(thread_name, "pc_task") == 0) {
     schedule_cfg->stack_size = 25 * 1024;
     schedule_cfg->priority = 18;

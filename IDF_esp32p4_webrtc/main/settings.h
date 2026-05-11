@@ -31,6 +31,15 @@ extern "C" {
 // #define VIDEO_WIDTH  1920
 // #define VIDEO_HEIGHT 1080
 #define VIDEO_FPS 25
+/*
+ * Streamed FPS target.
+ * Keep lower than sensor FPS to reduce encoder and RTP burst pressure.
+ */
+#if CONFIG_ESP_VIDEO_ENABLE_HW_H264_VIDEO_DEVICE
+#define WEBRTC_VIDEO_STREAM_FPS 20
+#else
+#define WEBRTC_VIDEO_STREAM_FPS 12
+#endif
 
 #ifdef CONFIG_CAMERA_OV5647_MIPI_RAW8_800X1280_50FPS
 #define VIDEO_WIDTH 800
@@ -42,8 +51,14 @@ extern "C" {
 #define VIDEO_WIDTH 800
 #define VIDEO_HEIGHT 800
 #elif defined(CONFIG_CAMERA_OV5647_MIPI_RAW10_1920X1080_30FPS)
+#if CONFIG_ESP_VIDEO_ENABLE_HW_H264_VIDEO_DEVICE
 #define VIDEO_WIDTH 1920
 #define VIDEO_HEIGHT 1080
+#else
+/* Software H264 path: downscale to reduce dropped frames at encoder side. */
+#define VIDEO_WIDTH 1280
+#define VIDEO_HEIGHT 720
+#endif
 #elif defined(CONFIG_CAMERA_OV5647_MIPI_RAW10_1280X960_BINNING_45FPS)
 #define VIDEO_WIDTH 1280
 #define VIDEO_HEIGHT 720
@@ -53,6 +68,7 @@ extern "C" {
 #define VIDEO_WIDTH 320
 #define VIDEO_HEIGHT 240
 #define VIDEO_FPS 10
+#define WEBRTC_VIDEO_STREAM_FPS 10
 #endif
 
 /**
@@ -72,10 +88,33 @@ extern "C" {
 /* Disable data-channel stress traffic by default to keep video stable. */
 #define DATA_CHANNEL_STRESS_TEST (false)
 
-/* Conservative WebRTC bitrate profile for higher stability on unstable links. */
-#define WEBRTC_VIDEO_BITRATE_START (450000)
-#define WEBRTC_VIDEO_BITRATE_STABLE (700000)
-#define WEBRTC_AUDIO_BITRATE (20000)
+/*
+ * Stability-oriented WebRTC profile:
+ * 1) start lower bitrate to avoid early burst loss right after connect
+ * 2) ramp up in stages after stream is stable
+ */
+/*
+ * Bitrate profile.
+ * Use a safer profile for software H264 to avoid queue bursts and frame loss.
+ */
+#if CONFIG_ESP_VIDEO_ENABLE_HW_H264_VIDEO_DEVICE
+#define WEBRTC_VIDEO_BITRATE_START (350000)
+#define WEBRTC_VIDEO_BITRATE_STEP (500000)
+#define WEBRTC_VIDEO_BITRATE_STABLE (650000)
+#else
+#define WEBRTC_VIDEO_BITRATE_START (220000)
+#define WEBRTC_VIDEO_BITRATE_STEP (320000)
+#define WEBRTC_VIDEO_BITRATE_STABLE (450000)
+#endif
+#define WEBRTC_VIDEO_BITRATE_STEP_DELAY_MS (6000)
+#define WEBRTC_VIDEO_BITRATE_STABLE_DELAY_MS (18000)
+#define WEBRTC_AUDIO_BITRATE (16000)
+
+// RTP/ICE robustness tuning for lossy/jittery links.
+#define WEBRTC_AGENT_RECV_TIMEOUT_MS (1500)
+#define WEBRTC_RTP_SEND_POOL_SIZE (768 * 1024)
+#define WEBRTC_RTP_SEND_QUEUE_NUM (384)
+#define WEBRTC_RTP_MAX_RESEND_COUNT (5)
 
 /**
  * @brief MQTT settings for local broker tests
