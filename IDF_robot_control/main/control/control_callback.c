@@ -4,13 +4,58 @@
 // #include "driver/adc.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
 #include <mcp23x17.h>
 
 
 #define TAG "[CONTORL]"
+#define DEFAULT_MOTOR_SPEED 125
+#define MOTOR_CONTROL_PERIOD_MS 20
+#define MOTOR_ACCEL_STEP 8
+#define MOTOR_DECEL_STEP 12
 
 // static EventGroupHandle_t event_grounp_handle_ = NULL;
 static mcp23x17_t mcp23x17_device_ = { 0 };
+static SemaphoreHandle_t motor_lock_ = NULL;
+static TaskHandle_t motor_control_task_handle_ = NULL;
+
+typedef enum {
+  MOTION_STOP = 0,
+  MOTION_FORWARD,
+  MOTION_BACKWARD,
+  MOTION_LEFT,
+  MOTION_RIGHT,
+} motion_cmd_t;
+
+static motion_cmd_t requested_motion_ = MOTION_STOP;
+static motion_cmd_t current_motion_ = MOTION_STOP;
+static int requested_speed_ = 0;
+static int current_speed_ = 0;
+
+static inline void motor_lock(void) {
+  if (motor_lock_) {
+    xSemaphoreTake(motor_lock_, portMAX_DELAY);
+  }
+}
+
+static inline void motor_unlock(void) {
+  if (motor_lock_) {
+    xSemaphoreGive(motor_lock_);
+  }
+}
+
+static inline void mcp_set_level_checked(uint8_t pin, uint32_t level) {
+  esp_err_t err = mcp23x17_set_level(&mcp23x17_device_, pin, level);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "mcp23x17_set_level(pin=%u, level=%u) failed: %s", pin, level, esp_err_to_name(err));
+  }
+}
+
+static inline void set_motor_standby(bool enable) {
+  mcp_set_level_checked(MOTOR_STBY_MCP_PIN, enable ? 1 : 0);
+}
 
 static void motor_pwm_init() {
   ledc_timer_config_t timer = {.speed_mode = LEDC_LOW_SPEED_MODE,
@@ -57,26 +102,27 @@ static void motor_set_speed(int speedA, int speedB, int speedC, int speedD) {
 }
 
 static void set_a_direction(bool front) {
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_A_BIN1_MCP_PIN, front ? 0 : 1);
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_A_BIN2_MCP_PIN, front ? 1 : 0);
+  mcp_set_level_checked(MOTOR_A_BIN1_MCP_PIN, front ? 0 : 1);
+  mcp_set_level_checked(MOTOR_A_BIN2_MCP_PIN, front ? 1 : 0);
 }
 
 static void set_b_direction(bool front) {
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_B_BIN1_MCP_PIN, front ? 0 : 1);
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_B_BIN2_MCP_PIN, front ? 1 : 0);
+  mcp_set_level_checked(MOTOR_B_BIN1_MCP_PIN, front ? 0 : 1);
+  mcp_set_level_checked(MOTOR_B_BIN2_MCP_PIN, front ? 1 : 0);
 }
 
 static void set_c_direction(bool front) {
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_C_BIN1_MCP_PIN, front ? 0 : 1);
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_C_BIN2_MCP_PIN, front ? 1 : 0);
+  mcp_set_level_checked(MOTOR_C_BIN1_MCP_PIN, front ? 0 : 1);
+  mcp_set_level_checked(MOTOR_C_BIN2_MCP_PIN, front ? 1 : 0);
 }
 
 static void set_d_direction(bool front) {
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_D_BIN1_MCP_PIN, front ? 0 : 1);
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_D_BIN2_MCP_PIN, front ? 1 : 0);
+  mcp_set_level_checked(MOTOR_D_BIN1_MCP_PIN, front ? 0 : 1);
+  mcp_set_level_checked(MOTOR_D_BIN2_MCP_PIN, front ? 1 : 0);
 }
 
 static void forward(int speed) {
+  set_motor_standby(true);
   set_a_direction(1);
   set_b_direction(1);
   set_c_direction(1);
@@ -85,6 +131,7 @@ static void forward(int speed) {
 }
 
 static void backward(int speed) {
+  set_motor_standby(true);
   set_a_direction(0);
   set_b_direction(0);
   set_c_direction(0);
@@ -93,6 +140,7 @@ static void backward(int speed) {
 }
 
 static void turn_left(int speed) {
+  set_motor_standby(true);
   set_a_direction(1);
   set_b_direction(0);
   set_c_direction(1);
@@ -101,6 +149,7 @@ static void turn_left(int speed) {
 }
 
 static void turn_right(int speed) {
+  set_motor_standby(true);
   set_a_direction(0);
   set_b_direction(1);
   set_c_direction(0);
@@ -108,77 +157,122 @@ static void turn_right(int speed) {
   motor_set_speed(speed, speed, speed, speed);
 }
 
-static void stop() { motor_set_speed(0, 0, 0, 0); }
+static void stop_soft() { motor_set_speed(0, 0, 0, 0); }
+
+static void apply_motion_direction(motion_cmd_t motion) {
+  switch (motion) {
+    case MOTION_FORWARD:
+      forward(0);
+      break;
+    case MOTION_BACKWARD:
+      backward(0);
+      break;
+    case MOTION_LEFT:
+      turn_left(0);
+      break;
+    case MOTION_RIGHT:
+      turn_right(0);
+      break;
+    case MOTION_STOP:
+    default:
+      break;
+  }
+}
+
+static void set_motion_target_locked(motion_cmd_t motion, int speed) {
+  requested_motion_ = motion;
+  requested_speed_ = (motion == MOTION_STOP) ? 0 : speed;
+}
+
+static void motor_control_task(void* arg) {
+  while (1) {
+    motor_lock();
+
+    // Change direction only at zero speed to avoid abrupt torque reversal.
+    if (current_motion_ != requested_motion_ && current_speed_ == 0) {
+      current_motion_ = requested_motion_;
+      if (current_motion_ != MOTION_STOP) {
+        apply_motion_direction(current_motion_);
+      }
+    }
+
+    int target_speed = 0;
+    if (current_motion_ == requested_motion_) {
+      target_speed = requested_speed_;
+    }
+
+    if (current_speed_ < target_speed) {
+      current_speed_ += MOTOR_ACCEL_STEP;
+      if (current_speed_ > target_speed) {
+        current_speed_ = target_speed;
+      }
+    } else if (current_speed_ > target_speed) {
+      current_speed_ -= MOTOR_DECEL_STEP;
+      if (current_speed_ < target_speed) {
+        current_speed_ = target_speed;
+      }
+    }
+
+    if (current_speed_ <= 0) {
+      current_speed_ = 0;
+      stop_soft();
+    } else {
+      motor_set_speed(current_speed_, current_speed_, current_speed_, current_speed_);
+    }
+
+    motor_unlock();
+    vTaskDelay(pdMS_TO_TICKS(MOTOR_CONTROL_PERIOD_MS));
+  }
+}
 
 static int64_t led_updated_time_ = 0;
 
-void ControlMessageCallback(int len, const uint8_t* value) {
+static void HandleControlMessage(int len, const uint8_t* value, const char* source) {
+  if (len <= 0 || value == NULL) {
+    ESP_LOGW(TAG, "invalid message from %s", source);
+    return;
+  }
+
+  motor_lock();
+
   uint8_t message_type = value[0];
   switch (message_type) {
     case 66:
+      motor_unlock();
       esp_restart();  // Reboots the ESP32
-      break;
+      return;
     case 8: {
-      ESP_LOGI(TAG, "move front");
-      forward(125);
+      ESP_LOGI(TAG, "%s move front", source);
+      set_motion_target_locked(MOTION_FORWARD, DEFAULT_MOTOR_SPEED);
     } break;
     case 2: {
-      ESP_LOGI(TAG, "move back");
-      backward(125);
+      ESP_LOGI(TAG, "%s move back", source);
+      set_motion_target_locked(MOTION_BACKWARD, DEFAULT_MOTOR_SPEED);
     } break;
     case 4: {
-      ESP_LOGI(TAG, "move left");
-      turn_left(125);
+      ESP_LOGI(TAG, "%s move left", source);
+      set_motion_target_locked(MOTION_LEFT, DEFAULT_MOTOR_SPEED);
     } break;
     case 5: {
-      ESP_LOGI(TAG, "stop");
-      stop();
+      ESP_LOGI(TAG, "%s stop", source);
+      set_motion_target_locked(MOTION_STOP, 0);
     } break;
     case 6: {
-      ESP_LOGI(TAG, "move right");
-      turn_right(125);
+      ESP_LOGI(TAG, "%s move right", source);
+      set_motion_target_locked(MOTION_RIGHT, DEFAULT_MOTOR_SPEED);
     } break;
     default: {
       ESP_LOG_BUFFER_HEX(TAG, value, len);
     } break;
   }
+  motor_unlock();
+
   led_updated_time_ = esp_timer_get_time();
   gpio_set_level(LED_PIN, LED_LIGHT_ON);
 }
 
-void CansbusControlMessageCallback(int len, const uint8_t* value) {
-  uint8_t message_type = value[0];
-  switch (message_type) {
-    case 66:
-      esp_restart();  // Reboots the ESP32
-      break;
-    case 8: {
-      ESP_LOGI(TAG, "move front");
-      forward(125);
-    } break;
-    case 2: {
-      ESP_LOGI(TAG, "move back");
-      backward(125);
-    } break;
-    case 4: {
-      ESP_LOGI(TAG, "move left");
-      turn_left(125);
-    } break;
-    case 5: {
-      ESP_LOGI(TAG, "stop");
-      stop();
-    } break;
-    case 6: {
-      ESP_LOGI(TAG, "move right");
-      turn_right(125);
-    } break;
-    default: {
-      ESP_LOG_BUFFER_HEX(TAG, value, len);
-    } break;
-  }
-  led_updated_time_ = esp_timer_get_time();
-  gpio_set_level(LED_PIN, LED_LIGHT_ON);
-}
+void ControlMessageCallback(int len, const uint8_t* value) { HandleControlMessage(len, value, "BLE"); }
+void CansbusControlMessageCallback(int len, const uint8_t* value) { HandleControlMessage(len, value, "CAN"); }
 
 // LED CONTROL
 void SetUpLed() {
@@ -196,6 +290,14 @@ void SetUpLed() {
 
 
 void InitMotorMcp23017() {
+  if (motor_lock_ == NULL) {
+    motor_lock_ = xSemaphoreCreateMutex();
+    if (motor_lock_ == NULL) {
+      ESP_LOGE(TAG, "failed to create motor mutex");
+      abort();
+    }
+  }
+
   ESP_ERROR_CHECK(i2cdev_init());
 
   // event_grounp_handle_ = xEventGroupCreate();
@@ -211,19 +313,24 @@ void InitMotorMcp23017() {
   mcp23x17_set_mode(&mcp23x17_device_, MOTOR_C_BIN2_MCP_PIN, MCP23X17_GPIO_OUTPUT);
   mcp23x17_set_mode(&mcp23x17_device_, MOTOR_D_BIN1_MCP_PIN, MCP23X17_GPIO_OUTPUT);
   mcp23x17_set_mode(&mcp23x17_device_, MOTOR_D_BIN2_MCP_PIN, MCP23X17_GPIO_OUTPUT);
-  motor_pwm_init();
-  stop();
 
-  // enable standby
-  mcp23x17_set_level(&mcp23x17_device_, MOTOR_STBY_MCP_PIN, true);
+  set_motor_standby(true);
+  motor_pwm_init();
+  stop_soft();
+
+  if (motor_control_task_handle_ == NULL) {
+    xTaskCreatePinnedToCore(motor_control_task, "motor_ctrl", 4096, NULL, 3, &motor_control_task_handle_, 1);
+  }
 }
 
 
 void UpdateLed(int64_t boottime_ms) {
-  if (boottime_ms - led_updated_time_ > 500000) {
+  if (boottime_ms - led_updated_time_ > NO_MESSAGE_STOP_DELAY) {
     // printf("force stop\n");
     gpio_set_level(LED_PIN, LED_LIGHT_OFF);
     led_updated_time_ = boottime_ms;
-    stop();
+    motor_lock();
+    set_motion_target_locked(MOTION_STOP, 0);
+    motor_unlock();
   }
 }

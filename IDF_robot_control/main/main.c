@@ -29,7 +29,7 @@ void app_main(void) {
   InitializeCanbus(CANBUS_RX_PIN, CANBUS_TX_PIN);
 
   SetBleMessageHandler(ControlMessageCallback);
-  ObdBleClientSetup();
+  // ObdBleClientSetup();
 
   while (1) {
     int64_t boottime_ms = esp_timer_get_time();

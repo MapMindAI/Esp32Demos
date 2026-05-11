@@ -31,6 +31,9 @@
 #define  MCP23017_I2C_MASTER_SCL  GPIO_NUM_22
 
 
+// if no message for a long time, we will stop the robot
+#define NO_MESSAGE_STOP_DELAY 1000000
+
 void InitMotorMcp23017();
 
 void SetUpLed();
