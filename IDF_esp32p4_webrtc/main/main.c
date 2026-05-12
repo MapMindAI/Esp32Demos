@@ -349,6 +349,7 @@ void app_main(void) {
   media_sys_buildup();
   init_console();
   network_init(WIFI_SSID, WIFI_PASSWORD, network_event_handler);
+  
   while (1) {
     // int64_t boottime_ms = esp_timer_get_time();
     // UpdateLed(boottime_ms);

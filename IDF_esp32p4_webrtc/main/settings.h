@@ -58,12 +58,12 @@ extern "C" {
 /**
  * @brief  Set for wifi ssid
  */
-#define WIFI_SSID "DEEP-RD"
+#define WIFI_SSID CONFIG_DOORBELL_WIFI_SSID
 
 /**
  * @brief  Set for wifi password
  */
-#define WIFI_PASSWORD "07310731"
+#define WIFI_PASSWORD CONFIG_DOORBELL_WIFI_PASSWORD
 
 /**
  * @brief  Whether enable data channel
