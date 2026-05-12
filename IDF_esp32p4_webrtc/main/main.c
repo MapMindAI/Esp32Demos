@@ -340,6 +340,8 @@ static int network_event_handler(bool connected) {
 
 void app_main(void) {
   esp_log_level_set("*", ESP_LOG_INFO);
+  // Suppress verbose per-packet resend logs from peer_default during packet loss.
+  esp_log_level_set("PEER_DEF", ESP_LOG_WARN);
   InitializeCanbus(CANBUS_RX_PIN, CANBUS_TX_PIN);
 
   media_lib_add_default_adapter();

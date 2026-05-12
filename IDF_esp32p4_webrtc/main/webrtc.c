@@ -697,6 +697,12 @@ int start_webrtc(char* url) {
 
   esp_peer_default_cfg_t peer_cfg = {
       .agent_recv_timeout = 1200,
+      .rtp_cfg = {
+          // Keep more RTP packets for retransmission while capping retry pressure.
+          .send_pool_size = 1024 * 1024,
+          .send_queue_num = 512,
+          .max_resend_count = 1,
+      },
   };
   esp_webrtc_cfg_t cfg = {
       .peer_cfg =
