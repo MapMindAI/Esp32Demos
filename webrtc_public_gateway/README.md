@@ -5,12 +5,14 @@ This subproject deploys a secure, public-facing WebRTC stack on Linux:
 - `Janus Gateway` as signaling/SFU (ESP32 publishes, browser subscribes)
 - `Caddy` as HTTPS/WSS edge with automatic TLS
 - `Web client` for remote viewing from Internet
+- `slam-server` bridge API for ORB-SLAM3 pose trajectory + sparse map rendering
 
 ## 1. Architecture
 
 1. ESP32 connects outbound to Janus (`https://<domain>/janus`) using built-in Janus signaling in `esp_webrtc`.
 2. Browser opens `https://<domain>/` and connects to Janus via WSS (`/janus-ws`).
 3. Janus relays media to browser over DTLS-SRTP.
+4. Browser can optionally push decoded video frames to `/slam/api/frame`; `slam-server` runs ORB-SLAM3 and returns camera 6DOF trajectory and map points.
 
 ## 2. Security controls in this setup
 
@@ -256,3 +258,59 @@ In `http://<host>:8080/`:
 - Default topics auto-fill as `ROOM_ID/memory` and `ROOM_ID/command`.
 - Click `MQTT Connect` to start receiving telemetry.
 - Use `Send MQTT Cmd` to send string command to ESP32.
+
+## 8. ORB-SLAM3 Pose + Map in Web UI
+
+The web page now includes a `Visual SLAM` panel with:
+
+- `SLAM Start/Stop/Reset` controls
+- live SLAM state (`initializing`, `tracking`, `lost`, `error`)
+- current 6DOF pose readout
+- 2D map canvas rendering trajectory + sparse map points
+
+### 8.1 Prepare ORB-SLAM3 data files
+
+Create this directory structure under `webrtc_public_gateway/`:
+
+```bash
+mkdir -p slam_data/Vocabulary slam_data/config
+```
+
+Place files:
+
+- `slam_data/Vocabulary/ORBvoc.txt`
+- `slam_data/config/monocular.yaml`
+
+`monocular.yaml` must match your ESP32 camera intrinsics/resolution.
+
+### 8.2 Configure env (optional)
+
+Defaults are already in `.env.example`:
+
+- `SLAM_DATA_DIR=./slam_data`
+- `SLAM_VOCAB_PATH=/opt/orbslam/Vocabulary/ORBvoc.txt`
+- `SLAM_SETTINGS_PATH=/opt/orbslam/config/monocular.yaml`
+
+If your filenames differ, adjust those variables in `.env`.
+
+### 8.3 Start services
+
+```bash
+cd webrtc_public_gateway
+docker compose up -d --build slam-server caddy janus mosquitto
+```
+
+### 8.4 Use in browser
+
+1. Open the web app (`http://localhost:8080/` for local testing).
+2. Connect WebRTC as usual.
+3. In `Visual SLAM`, click `SLAM Start`.
+4. Move camera to generate parallax; map/trajectory update live.
+
+Notes:
+
+- Monocular ORB-SLAM3 trajectory scale is relative (not metric unless additional scale reference exists).
+- If the SLAM status shows file/module errors, check:
+  - `slam-server` container logs
+  - vocabulary/settings paths
+  - whether `orbslam3-python` is installed for your host architecture

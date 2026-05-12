@@ -17,6 +17,12 @@
   let lastRobotSpeedPublishMs = 0;
   let robotSpeedPublishTimer = null;
   let pendingRobotSpeedValue = null;
+  let slamFrameTimer = null;
+  let slamStateTimer = null;
+  let slamRequestInflight = false;
+  let slamRunning = false;
+  let lastSlamStateFetchMs = 0;
+  let slamLastSnapshot = null;
 
   const statusEl = document.getElementById('status');
   const videoEl = document.getElementById('remoteVideo');
@@ -51,11 +57,24 @@
   const servoStopBtn = document.getElementById('servoStopBtn');
   const servoStepSlider = document.getElementById('servoStepSlider');
   const servoStepValue = document.getElementById('servoStepValue');
+  const slamStartBtn = document.getElementById('slamStartBtn');
+  const slamStopBtn = document.getElementById('slamStopBtn');
+  const slamResetBtn = document.getElementById('slamResetBtn');
+  const slamStatusEl = document.getElementById('slamStatus');
+  const slamPoseEl = document.getElementById('slamPose');
+  const slamStatsEl = document.getElementById('slamStats');
+  const slamMapCanvas = document.getElementById('slamMapCanvas');
+  const slamMapCtx = slamMapCanvas.getContext('2d');
+  const slamCaptureCanvas = document.createElement('canvas');
+  const slamCaptureCtx = slamCaptureCanvas.getContext('2d');
 
   const setStatus = (msg) => { statusEl.textContent = msg; };
   const setMqttStatus = (msg) => { mqttStatusEl.textContent = msg; };
+  const setSlamStatus = (msg) => { slamStatusEl.textContent = `SLAM: ${msg}`; };
   const VIDEO_STALL_TIMEOUT_MS = 20000;
   const VIDEO_STALL_WINDOW_MS = 45000;
+  const SLAM_FRAME_INTERVAL_MS = 250;
+  const SLAM_STATE_INTERVAL_MS = 1000;
 
   function appendMqttLog(line) {
     const ts = new Date().toLocaleTimeString();
@@ -322,6 +341,290 @@
       mqttCmdTopicEl.value = `${roomId}/command`;
     }
     mqttPasswordEl.value = roomPin;
+  }
+
+  async function fetchSlam(path, method = 'GET', body = null) {
+    const opts = { method, headers: {} };
+    if (body !== null) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const resp = await fetch(path, opts);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`${resp.status} ${resp.statusText}: ${text}`);
+    }
+    return resp.json();
+  }
+
+  function updateSlamButtonState(isRunning) {
+    slamStartBtn.disabled = isRunning;
+    slamStopBtn.disabled = !isRunning;
+  }
+
+  function toNumber(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function formatN(value, digits = 3) {
+    return Number.isFinite(value) ? value.toFixed(digits) : '-';
+  }
+
+  function yawFromQuaternionRad(pose) {
+    const qx = toNumber(pose?.qx);
+    const qy = toNumber(pose?.qy);
+    const qz = toNumber(pose?.qz);
+    const qw = toNumber(pose?.qw);
+    if (qx === null || qy === null || qz === null || qw === null) {
+      return null;
+    }
+    const siny = 2 * ((qw * qz) + (qx * qy));
+    const cosy = 1 - (2 * ((qy * qy) + (qz * qz)));
+    return Math.atan2(siny, cosy);
+  }
+
+  function resizeSlamCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(320, Math.floor(slamMapCanvas.clientWidth * dpr));
+    const height = Math.max(180, Math.floor(slamMapCanvas.clientHeight * dpr));
+    if (slamMapCanvas.width !== width || slamMapCanvas.height !== height) {
+      slamMapCanvas.width = width;
+      slamMapCanvas.height = height;
+    }
+  }
+
+  function renderSlamMap(snapshot) {
+    if (!slamMapCtx) {
+      return;
+    }
+    resizeSlamCanvas();
+    const width = slamMapCanvas.width;
+    const height = slamMapCanvas.height;
+    slamMapCtx.clearRect(0, 0, width, height);
+    slamMapCtx.fillStyle = '#020617';
+    slamMapCtx.fillRect(0, 0, width, height);
+
+    const mapPoints = Array.isArray(snapshot?.map_points) ? snapshot.map_points : [];
+    const trajectory = Array.isArray(snapshot?.trajectory) ? snapshot.trajectory : [];
+    const mapSamples = [];
+    const trajSamples = [];
+
+    mapPoints.forEach((point) => {
+      if (Array.isArray(point) && point.length >= 3) {
+        const x = toNumber(point[0]);
+        const z = toNumber(point[2]);
+        if (x !== null && z !== null) {
+          mapSamples.push({ x, z });
+        }
+      }
+    });
+
+    trajectory.forEach((pose) => {
+      const x = toNumber(pose?.x);
+      const z = toNumber(pose?.z);
+      if (x !== null && z !== null) {
+        trajSamples.push({ x, z });
+      }
+    });
+
+    if (!mapSamples.length && !trajSamples.length) {
+      slamMapCtx.fillStyle = '#64748b';
+      slamMapCtx.font = `${Math.max(16, Math.floor(height * 0.05))}px sans-serif`;
+      slamMapCtx.textAlign = 'center';
+      slamMapCtx.fillText('No SLAM map yet', width / 2, height / 2);
+      return;
+    }
+
+    const all = mapSamples.concat(trajSamples);
+    let minX = all[0].x;
+    let maxX = all[0].x;
+    let minZ = all[0].z;
+    let maxZ = all[0].z;
+    all.forEach((p) => {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minZ = Math.min(minZ, p.z);
+      maxZ = Math.max(maxZ, p.z);
+    });
+
+    const spanX = Math.max(0.001, maxX - minX);
+    const spanZ = Math.max(0.001, maxZ - minZ);
+    const margin = Math.max(12, Math.floor(Math.min(width, height) * 0.05));
+    const scale = Math.min((width - (2 * margin)) / spanX, (height - (2 * margin)) / spanZ);
+    const offsetX = (width - (spanX * scale)) / 2;
+    const offsetY = (height - (spanZ * scale)) / 2;
+    const toCanvas = (x, z) => [offsetX + ((x - minX) * scale), height - (offsetY + ((z - minZ) * scale))];
+
+    slamMapCtx.strokeStyle = 'rgba(71, 85, 105, 0.6)';
+    slamMapCtx.lineWidth = 1;
+    slamMapCtx.beginPath();
+    slamMapCtx.moveTo(margin, height / 2);
+    slamMapCtx.lineTo(width - margin, height / 2);
+    slamMapCtx.moveTo(width / 2, margin);
+    slamMapCtx.lineTo(width / 2, height - margin);
+    slamMapCtx.stroke();
+
+    slamMapCtx.fillStyle = 'rgba(148, 163, 184, 0.55)';
+    mapSamples.forEach((p) => {
+      const [cx, cy] = toCanvas(p.x, p.z);
+      slamMapCtx.fillRect(cx - 1, cy - 1, 2, 2);
+    });
+
+    if (trajSamples.length >= 2) {
+      slamMapCtx.strokeStyle = '#22d3ee';
+      slamMapCtx.lineWidth = 2;
+      slamMapCtx.beginPath();
+      trajSamples.forEach((p, idx) => {
+        const [cx, cy] = toCanvas(p.x, p.z);
+        if (idx === 0) {
+          slamMapCtx.moveTo(cx, cy);
+        } else {
+          slamMapCtx.lineTo(cx, cy);
+        }
+      });
+      slamMapCtx.stroke();
+    }
+
+    if (trajSamples.length > 0) {
+      const tail = trajSamples[trajSamples.length - 1];
+      const [cx, cy] = toCanvas(tail.x, tail.z);
+      slamMapCtx.fillStyle = '#ef4444';
+      slamMapCtx.beginPath();
+      slamMapCtx.arc(cx, cy, 5, 0, Math.PI * 2);
+      slamMapCtx.fill();
+    }
+  }
+
+  function updateSlamUi(snapshot) {
+    slamLastSnapshot = snapshot;
+    const state = snapshot?.state || 'unknown';
+    const message = snapshot?.message || '';
+    const statusText = message ? `${state} | ${message}` : state;
+    setSlamStatus(statusText);
+
+    slamRunning = Boolean(snapshot?.is_running);
+    updateSlamButtonState(slamRunning);
+
+    const pose = snapshot?.current_pose;
+    const x = toNumber(pose?.x);
+    const y = toNumber(pose?.y);
+    const z = toNumber(pose?.z);
+    const yawRad = yawFromQuaternionRad(pose);
+    const yawDeg = yawRad === null ? null : (yawRad * 180.0 / Math.PI);
+    if (x === null || y === null || z === null) {
+      slamPoseEl.textContent = 'Pose: unavailable';
+    } else {
+      slamPoseEl.textContent = `Pose (x,y,z): ${formatN(x)} ${formatN(y)} ${formatN(z)} | Yaw: ${yawDeg === null ? '-' : yawDeg.toFixed(1)} deg`;
+    }
+
+    const frameCount = Number(snapshot?.frame_count || 0);
+    const trackedFrames = Number(snapshot?.tracked_frames || 0);
+    const lostFrames = Number(snapshot?.lost_frames || 0);
+    const trajSize = Number(snapshot?.trajectory_size || 0);
+    const mapSize = Number(snapshot?.map_points_size || 0);
+    slamStatsEl.textContent = `Frames: ${frameCount} | Tracked: ${trackedFrames} | Lost: ${lostFrames} | Trajectory: ${trajSize} | Map points: ${mapSize}`;
+
+    renderSlamMap(snapshot);
+  }
+
+  async function refreshSlamState(force = false) {
+    const now = Date.now();
+    if (!force && (now - lastSlamStateFetchMs) < 300) {
+      return;
+    }
+    lastSlamStateFetchMs = now;
+    try {
+      const resp = await fetchSlam('/slam/api/state');
+      if (resp?.slam) {
+        updateSlamUi(resp.slam);
+      }
+    } catch (err) {
+      setSlamStatus(`state error: ${err.message || err}`);
+    }
+  }
+
+  async function pushVideoFrameToSlam() {
+    if (!slamRunning || slamRequestInflight) {
+      return;
+    }
+    if (!videoEl.srcObject || videoEl.readyState < 2 || videoEl.videoWidth < 2 || videoEl.videoHeight < 2) {
+      return;
+    }
+
+    const sourceW = videoEl.videoWidth;
+    const sourceH = videoEl.videoHeight;
+    const maxW = 640;
+    const scale = Math.min(1, maxW / sourceW);
+    const targetW = Math.max(2, Math.round(sourceW * scale));
+    const targetH = Math.max(2, Math.round(sourceH * scale));
+
+    if (slamCaptureCanvas.width !== targetW || slamCaptureCanvas.height !== targetH) {
+      slamCaptureCanvas.width = targetW;
+      slamCaptureCanvas.height = targetH;
+    }
+    slamCaptureCtx.drawImage(videoEl, 0, 0, targetW, targetH);
+
+    const imageBase64 = slamCaptureCanvas.toDataURL('image/jpeg', 0.72);
+    slamRequestInflight = true;
+    try {
+      const resp = await fetchSlam('/slam/api/frame', 'POST', {
+        image_base64: imageBase64,
+        timestamp_ms: Date.now(),
+      });
+      if (resp?.slam) {
+        updateSlamUi(resp.slam);
+      }
+    } catch (err) {
+      setSlamStatus(`frame error: ${err.message || err}`);
+    } finally {
+      slamRequestInflight = false;
+    }
+  }
+
+  async function slamStart() {
+    try {
+      setSlamStatus('starting...');
+      const resp = await fetchSlam('/slam/api/control/start', 'POST');
+      if (resp?.slam) {
+        updateSlamUi(resp.slam);
+      }
+    } catch (err) {
+      setSlamStatus(`start failed: ${err.message || err}`);
+    }
+  }
+
+  async function slamStop() {
+    try {
+      const resp = await fetchSlam('/slam/api/control/stop', 'POST');
+      if (resp?.slam) {
+        updateSlamUi(resp.slam);
+      }
+    } catch (err) {
+      setSlamStatus(`stop failed: ${err.message || err}`);
+    }
+  }
+
+  async function slamReset() {
+    try {
+      const resp = await fetchSlam('/slam/api/control/reset', 'POST');
+      if (resp?.slam) {
+        updateSlamUi(resp.slam);
+      }
+    } catch (err) {
+      setSlamStatus(`reset failed: ${err.message || err}`);
+    }
+  }
+
+  function startSlamLoops() {
+    if (!slamFrameTimer) {
+      slamFrameTimer = setInterval(pushVideoFrameToSlam, SLAM_FRAME_INTERVAL_MS);
+    }
+    if (!slamStateTimer) {
+      slamStateTimer = setInterval(() => {
+        refreshSlamState(false);
+      }, SLAM_STATE_INTERVAL_MS);
+    }
   }
 
   function mqttConnect() {
@@ -717,6 +1020,9 @@
     await destroySession();
     setStatus('Disconnected.');
   });
+  slamStartBtn.addEventListener('click', slamStart);
+  slamStopBtn.addEventListener('click', slamStop);
+  slamResetBtn.addEventListener('click', slamReset);
   mqttConnectBtn.addEventListener('click', mqttConnect);
   mqttDisconnectBtn.addEventListener('click', mqttDisconnect);
   mqttSendBtn.addEventListener('click', mqttSendCommand);
@@ -760,6 +1066,17 @@
     ev.preventDefault();
     mqttPublishCommand('SERVO_STOP');
   });
+  window.addEventListener('resize', () => {
+    if (slamLastSnapshot) {
+      renderSlamMap(slamLastSnapshot);
+    } else {
+      renderSlamMap({});
+    }
+  });
   installButtonPressEffects();
   syncMqttFromRoom();
+  updateSlamButtonState(false);
+  renderSlamMap({});
+  startSlamLoops();
+  refreshSlamState(true);
 })();

@@ -8,6 +8,7 @@
 
   reverse_proxy /janus* 127.0.0.1:8088
   reverse_proxy /janus-ws* 127.0.0.1:8188
+  reverse_proxy /slam* 127.0.0.1:8090
 
   header {
     X-Content-Type-Options "nosniff"

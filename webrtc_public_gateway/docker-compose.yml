@@ -27,6 +27,22 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  slam-server:
+    build:
+      context: ./slam_server
+    container_name: slam-server
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - SLAM_VOCAB_PATH=${SLAM_VOCAB_PATH:-/opt/orbslam/Vocabulary/ORBvoc.txt}
+      - SLAM_SETTINGS_PATH=${SLAM_SETTINGS_PATH:-/opt/orbslam/config/monocular.yaml}
+      - SLAM_SENSOR=${SLAM_SENSOR:-MONOCULAR}
+      - SLAM_MAX_TRAJECTORY_POINTS=${SLAM_MAX_TRAJECTORY_POINTS:-3000}
+      - SLAM_MAP_SAMPLE_STRIDE=${SLAM_MAP_SAMPLE_STRIDE:-4}
+      - SLAM_MAX_MAP_POINTS=${SLAM_MAX_MAP_POINTS:-4000}
+    volumes:
+      - ${SLAM_DATA_DIR:-./slam_data}:/opt/orbslam:ro
+
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: mqtt-broker
