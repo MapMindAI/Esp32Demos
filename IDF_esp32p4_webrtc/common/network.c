@@ -48,6 +48,19 @@ static wifi_config_t wifi_config;
 #define WIFI_SSID_KEY "ssid"
 #define WIFI_PSW_KEY "psw"
 
+static bool has_text(const char* text) { return text && text[0] != '\0'; }
+
+static void set_wifi_credentials(const char* ssid, const char* password) {
+  memset(wifi_config.sta.ssid, 0, sizeof(wifi_config.sta.ssid));
+  memset(wifi_config.sta.password, 0, sizeof(wifi_config.sta.password));
+  if (ssid) {
+    strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+  }
+  if (password) {
+    strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
+  }
+}
+
 static bool load_from_nvs(void) {
   nvs_handle_t wifi_nvs = 0;
   bool load_ok = false;
@@ -62,13 +75,13 @@ static bool load_from_nvs(void) {
     if (ret != ESP_OK) {
       break;
     }
-    wifi_config.sta.ssid[size] = '\0';
+    wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0';
     size = sizeof(wifi_config.sta.password);
     ret = nvs_get_str(wifi_nvs, WIFI_PSW_KEY, (char*)(wifi_config.sta.password), &size);
     if (ret != ESP_OK) {
       break;
     }
-    wifi_config.sta.password[size] = '\0';
+    wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0';
     load_ok = true;
   } while (0);
   if (wifi_nvs) {
@@ -130,15 +143,13 @@ int network_init(const char* ssid, const char* password, network_connect_cb cb) 
   ESP_ERROR_CHECK(
       esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL, &instance_got_ip));
   wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-  if (load_from_nvs()) {
-    ESP_LOGI(TAG, "Force to use wifi config from nvs");
+  if (has_text(ssid)) {
+    set_wifi_credentials(ssid, password);
+    ESP_LOGI(TAG, "Use wifi config from app settings");
+  } else if (load_from_nvs()) {
+    ESP_LOGI(TAG, "Use wifi config from nvs");
   } else {
-    if (ssid) {
-      memcpy(wifi_config.sta.ssid, ssid, strlen(ssid) + 1);
-    }
-    if (password) {
-      memcpy(wifi_config.sta.password, password, strlen(password) + 1);
-    }
+    set_wifi_credentials(ssid, password);
   }
   connect_cb = cb;
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -157,10 +168,12 @@ int network_get_mac(uint8_t mac[6]) {
 int network_connect_wifi(const char* ssid, const char* password) {
   wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
   if (ssid) {
-    memcpy(wifi_config.sta.ssid, ssid, strlen(ssid) + 1);
+    memset(wifi_config.sta.ssid, 0, sizeof(wifi_config.sta.ssid));
+    strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
   }
   if (password) {
-    memcpy(wifi_config.sta.password, password, strlen(password) + 1);
+    memset(wifi_config.sta.password, 0, sizeof(wifi_config.sta.password));
+    strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
   }
   network_connected = false;
   esp_wifi_disconnect();

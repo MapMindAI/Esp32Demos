@@ -1,5 +1,18 @@
 menu "DoorBell Local Demo"
 
+config DOORBELL_WIFI_SSID
+    string "Wi-Fi SSID"
+    default "YOUR_WIFI_SSID"
+    help
+        Wi-Fi SSID used by station mode at boot.
+
+config DOORBELL_WIFI_PASSWORD
+    string "Wi-Fi password"
+    default "YOUR_WIFI_PASSWORD"
+    help
+        Wi-Fi password used by station mode at boot.
+        Set to empty for open networks.
+
 choice DOORBELL_SIGNALING_MODE
     prompt "Signaling backend"
     default DOORBELL_SIGNALING_LOCAL_HTTP

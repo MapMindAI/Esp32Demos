@@ -235,17 +235,6 @@ _exit:
   return ret;
 }
 
-// Handler for GET /webrtc/test
-static esp_err_t webrtc_test_get_handler(httpd_req_t* req) {
-  extern const unsigned char webrtc_test_html_start[] asm("_binary_webrtc_test_html_start");
-  extern const unsigned char webrtc_test_html_end[] asm("_binary_webrtc_test_html_end");
-  const size_t webrtc_test_html_size = (webrtc_test_html_end - webrtc_test_html_start);
-
-  httpd_resp_set_type(req, "text/html");
-  httpd_resp_send(req, (const char*)webrtc_test_html_start, webrtc_test_html_size);
-  return ESP_OK;
-}
-
 // Handler for GET /webrtc/ring.aac
 static esp_err_t webrtc_ring_get_handler(httpd_req_t* req) {
   extern const unsigned char ring_aac_start[] asm("_binary_ring_aac_start");
@@ -291,10 +280,6 @@ static esp_err_t init_http_server(void) {
   httpd_uri_t webrtc_signal_post = {
       .uri = "/webrtc/signal/post", .method = HTTP_POST, .handler = webrtc_signal_post_handler, .user_ctx = NULL};
   httpd_register_uri_handler(server, &webrtc_signal_post);
-
-  httpd_uri_t webrtc_test = {
-      .uri = "/webrtc/test", .method = HTTP_GET, .handler = webrtc_test_get_handler, .user_ctx = NULL};
-  httpd_register_uri_handler(server, &webrtc_test);
 
   httpd_uri_t webrtc_ring = {
       .uri = "/webrtc/ring.aac", .method = HTTP_GET, .handler = webrtc_ring_get_handler, .user_ctx = NULL};

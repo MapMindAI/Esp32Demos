@@ -41,6 +41,7 @@ This repo is an ESP-IDF workspace for a 3-controller robot system:
 
 ```bash
 cd webrtc_public_gateway
+cp .env.example .env
 ./scripts/bootstrap_janus_and_sdkconfig.sh \
   --room-id 1234 \
   --signal-url http://192.168.19.25:8080/janus \

@@ -58,12 +58,12 @@ extern "C" {
 /**
  * @brief  Set for wifi ssid
  */
-#define WIFI_SSID "DEEP-RD"
+#define WIFI_SSID CONFIG_DOORBELL_WIFI_SSID
 
 /**
  * @brief  Set for wifi password
  */
-#define WIFI_PASSWORD "07310731"
+#define WIFI_PASSWORD CONFIG_DOORBELL_WIFI_PASSWORD
 
 /**
  * @brief  Whether enable data channel
@@ -72,9 +72,9 @@ extern "C" {
 /* Disable data-channel stress traffic by default to keep video stable. */
 #define DATA_CHANNEL_STRESS_TEST (false)
 
-/* Conservative WebRTC bitrate profile for higher stability on unstable links. */
-#define WEBRTC_VIDEO_BITRATE_START (450000)
-#define WEBRTC_VIDEO_BITRATE_STABLE (700000)
+/* Lower default video bitrate to reduce burst loss/NACK storms on noisy Wi-Fi. */
+#define WEBRTC_VIDEO_BITRATE_START (350000)
+#define WEBRTC_VIDEO_BITRATE_STABLE (550000)
 #define WEBRTC_AUDIO_BITRATE (20000)
 
 /**
