@@ -10,6 +10,9 @@ This repo is an ESP-IDF workspace for a 3-controller robot system:
 
 ![Web display](assets/display_web.jpg)
 
+https://github.com/user-attachments/assets/272ed0e9-eee6-451c-b6ee-d79298cd6af2
+
+
 ## Main capabilities
 
 - Browser remote control with WebRTC video
@@ -99,3 +102,4 @@ This includes:
 - [Aliyun ECS Deployment Guide (WebRTC + MQTT Gateway)](webrtc_public_gateway/ALIYUN_ECS_DEPLOYMENT.md)
 - [Gateway details](webrtc_public_gateway/README.md)
 - [MQTT-Controlled WebRTC Flow](webrtc_public_gateway/MQTT_WEBRTC_CONTROL_FLOW.md)
+- [Hardware List](HARDWARE_LIST.md)
