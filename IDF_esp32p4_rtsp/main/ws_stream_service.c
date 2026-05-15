@@ -137,7 +137,7 @@ static esp_err_t ws_handler(httpd_req_t* req) {
       s_ctx.video_started = true;
     }
     if (!s_ctx.stream_task) {
-      xTaskCreate(ws_stream_task, "ws_stream_task", 8192, NULL, 5, &s_ctx.stream_task);
+      xTaskCreate(ws_stream_task, "ws_stream_task", 12288, NULL, 5, &s_ctx.stream_task);
     }
     return ESP_OK;
   }

@@ -6,6 +6,7 @@
 
 #include "video_dev.h"
 #include "config.h"
+#include "pixel_selector.h"
 #include <fcntl.h>
 #include <string.h>
 #include <sys/errno.h>
@@ -22,7 +23,6 @@
 #include <esp_heap_caps.h>
 #include <esp_system.h>
 #include <inttypes.h>
-#include <math.h>
 
 #define OUTPUT_FORMAT V4L2_PIX_FMT_JPEG
 #define CAM_DEV_PATH ESP_VIDEO_MIPI_CSI_DEVICE_NAME
@@ -59,182 +59,22 @@ static const esp_video_init_config_t cam_config = {
     .csi = csi_config,
 };
 
-static inline uint8_t rgb_to_gray_u8(int r, int g, int b) {
-  // ITU-R BT.601 integer approximation
-  int y = (77 * r + 150 * g + 29 * b) >> 8;
-  if (y < 0) y = 0;
-  if (y > 255) y = 255;
-  return (uint8_t)y;
-}
-
-static inline uint8_t raw_gray_at(const camera_context* cb_ctx, const uint8_t* raw, int x, int y, int w, int h) {
-  if (x < 0) x = 0;
-  if (y < 0) y = 0;
-  if (x >= w) x = w - 1;
-  if (y >= h) y = h - 1;
-
-  switch (cb_ctx->cap_pixfmt) {
-    case V4L2_PIX_FMT_GREY:
-      return raw[y * w + x];
-    case V4L2_PIX_FMT_YUV420:
-    case V4L2_PIX_FMT_YUV422P:
-      // Y plane is the first width*height bytes for both planar formats.
-      return raw[y * w + x];
-    case V4L2_PIX_FMT_RGB24: {
-      int idx = (y * w + x) * 3;
-      int r = raw[idx + 0];
-      int g = raw[idx + 1];
-      int b = raw[idx + 2];
-      return rgb_to_gray_u8(r, g, b);
-    }
-    case V4L2_PIX_FMT_RGB565: {
-      int idx = (y * w + x) * 2;
-      uint16_t p = (uint16_t)raw[idx] | ((uint16_t)raw[idx + 1] << 8);
-      int r = ((p >> 11) & 0x1F) * 255 / 31;
-      int g = ((p >> 5) & 0x3F) * 255 / 63;
-      int b = (p & 0x1F) * 255 / 31;
-      return rgb_to_gray_u8(r, g, b);
-    }
-    default:
-      // Fallback: treat as luma-like single channel.
-      return raw[y * w + x];
-  }
-}
-
-static const float kDirs[16][2] = {
-    {0.0f, 1.0f},       {0.3827f, 0.9239f},  {0.1951f, 0.9808f},   {0.9239f, 0.3827f},
-    {0.7071f, 0.7071f}, {0.3827f, -0.9239f}, {0.8315f, 0.5556f},   {0.8315f, -0.5556f},
-    {0.5556f, -0.8315f},{0.9808f, 0.1951f},  {0.9239f, -0.3827f},  {0.7071f, -0.7071f},
-    {0.5556f, 0.8315f}, {0.9808f, -0.1951f}, {1.0f, 0.0f},         {0.1951f, -0.9808f},
-};
-
 static void run_pixel_selector_quarter(camera_context* cb_ctx, const uint8_t* y_plane, size_t width, size_t height) {
   cb_ctx->corners_num = 0;
   if (!y_plane || !cb_ctx->quarter_img || cb_ctx->quarter_width < 4 || cb_ctx->quarter_height < 4) {
     return;
   }
 
-  const int qw = (int)cb_ctx->quarter_width;
-  const int qh = (int)cb_ctx->quarter_height;
-  const int src_w = (int)width;
-  const int src_h = (int)height;
-  const int scale = SELECTOR_SMALL_IMG_SCALE;
-
-  for (int y = 0; y < qh; ++y) {
-    int sy = y * scale;
-    for (int x = 0; x < qw; ++x) {
-      int sx = x * scale;
-      uint32_t ssum = 0;
-      for (int by = 0; by < scale; ++by) {
-        for (int bx = 0; bx < scale; ++bx) {
-          ssum += raw_gray_at(cb_ctx, y_plane, sx + bx, sy + by, src_w, src_h);
-        }
-      }
-      cb_ctx->quarter_img[y * qw + x] = (uint8_t)(ssum / (uint32_t)(scale * scale));
-    }
-  }
-
-  const int blk = SELECTOR_BLOCK_SIZE;
-  const int w32 = (qw + blk - 1) / blk;
-  const int h32 = (qh + blk - 1) / blk;
-  const int gradient_histogram_add = SELECTOR_GRAD_HIST_ADD;
-  const float threshold_scale = SELECTOR_THRESHOLD_SCALE;
-  const float best_val_min = SELECTOR_BEST_VAL_MIN;
-  int* th_hist = (int*)heap_caps_malloc((size_t)w32 * h32 * sizeof(int), MALLOC_CAP_8BIT);
-  float* th_smooth = (float*)heap_caps_malloc((size_t)w32 * h32 * sizeof(float), MALLOC_CAP_8BIT);
-  if (!th_hist || !th_smooth) {
-    if (th_hist) free(th_hist);
-    if (th_smooth) free(th_smooth);
-    return;
-  }
-
-  for (int by = 0; by < h32; ++by) {
-    for (int bx = 0; bx < w32; ++bx) {
-      int hist[51] = {0};
-      int xs = bx * blk, ys = by * blk;
-      int xe = xs + blk > qw ? qw : xs + blk;
-      int ye = ys + blk > qh ? qh : ys + blk;
-      int cnt = 0;
-      for (int y = ys; y < ye; ++y) {
-        for (int x = xs; x < xe; ++x) {
-          int gg = 0;
-          if (x > 0 && x < qw - 1 && y > 0 && y < qh - 1) {
-            int idx = y * qw + x;
-            int dx = (int)cb_ctx->quarter_img[idx + 1] - (int)cb_ctx->quarter_img[idx - 1];
-            int dy = (int)cb_ctx->quarter_img[idx + qw] - (int)cb_ctx->quarter_img[idx - qw];
-            gg = (int)sqrtf((float)(dx * dx + dy * dy));
-          }
-          if (gg > 48) gg = 48;
-          hist[gg + 1]++;
-          cnt++;
-        }
-      }
-      hist[0] = cnt;
-      int th = (int)(hist[0] * 0.5f + 0.5f);
-      int q = 50;
-      for (int i = 0; i < 50; ++i) {
-        th -= hist[i + 1];
-        if (th < 0) {
-          q = i;
-          break;
-        }
-      }
-      th_hist[bx + by * w32] = q + gradient_histogram_add;
-    }
-  }
-
-  for (int by = 0; by < h32; ++by) {
-    for (int bx = 0; bx < w32; ++bx) {
-      int sum = 0, num = 0;
-      for (int oy = -1; oy <= 1; ++oy) {
-        for (int ox = -1; ox <= 1; ++ox) {
-          int nx = bx + ox, ny = by + oy;
-          if (nx < 0 || ny < 0 || nx >= w32 || ny >= h32) continue;
-          sum += th_hist[nx + ny * w32];
-          num++;
-        }
-      }
-      float a = (float)sum / (float)num;
-      th_smooth[bx + by * w32] = a * a;
-    }
-  }
-
-  const int potential = SELECTOR_POTENTIAL;
-  for (int yb = 1; yb < qh - potential; yb += potential) {
-    for (int xb = 1; xb < qw - potential; xb += potential) {
-      if (cb_ctx->corners_num >= MAX_CORNER_POINTS) break;
-      int best_idx = -1;
-      float best_val = 0.0f;
-      const float* dir = kDirs[(cb_ctx->corners_num + frame_seq) & 15];
-      for (int dy0 = 0; dy0 < potential; ++dy0) {
-        for (int dx0 = 0; dx0 < potential; ++dx0) {
-          int x = xb + dx0;
-          int y = yb + dy0;
-          int idx = y * qw + x;
-          float th = th_smooth[(x >> 5) + (y >> 5) * w32] * threshold_scale;
-          int dx = (int)cb_ctx->quarter_img[idx + 1] - (int)cb_ctx->quarter_img[idx - 1];
-          int dy = (int)cb_ctx->quarter_img[idx + qw] - (int)cb_ctx->quarter_img[idx - qw];
-          float g2 = (float)(dx * dx + dy * dy);
-          if (g2 > th) {
-            float proj = fabsf((float)dx * dir[0] + (float)dy * dir[1]);
-            if (proj > best_val) {
-              best_val = proj;
-              best_idx = idx;
-            }
-          }
-        }
-      }
-      if (best_idx >= 0 && best_val >= best_val_min) {
-        cb_ctx->corners[cb_ctx->corners_num].x = (uint16_t)(best_idx % qw);
-        cb_ctx->corners[cb_ctx->corners_num].y = (uint16_t)(best_idx / qw);
-        cb_ctx->corners[cb_ctx->corners_num].score = (uint32_t)best_val;
-        cb_ctx->corners_num++;
-      }
-    }
-  }
-
-  free(th_hist);
-  free(th_smooth);
+  cb_ctx->corners_num = (size_t)pixel_selector_run(y_plane,
+                                                    (int)width,
+                                                    (int)height,
+                                                    cb_ctx->cap_pixfmt,
+                                                    cb_ctx->quarter_img,
+                                                    (int)cb_ctx->quarter_width,
+                                                    (int)cb_ctx->quarter_height,
+                                                    cb_ctx->corners,
+                                                    MAX_CORNER_POINTS,
+                                                    frame_seq);
 }
 
 static void print_video_device_info(const struct v4l2_capability* capability) {
@@ -704,6 +544,7 @@ int video_dev_init(camera_context* context) {
   ESP_ERROR_CHECK(esp_video_init(&cam_config));
   ESP_ERROR_CHECK(init_capture_video(context));
   ESP_ERROR_CHECK(init_codec_video(context));
+  ESP_ERROR_CHECK(pixel_selector_init());
   return ESP_OK;
 }
 
