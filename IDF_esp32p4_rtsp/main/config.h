@@ -4,6 +4,8 @@
 // Sparse selector / small-image pipeline configuration.
 // Downsample ratio for selector input image (2 => width/2,height/2 => 1/4 pixels).
 #define SELECTOR_SMALL_IMG_SCALE 2
+// Enable dual-core parallel selector processing (top/bottom split) when SMP is available.
+#define SELECTOR_USE_DUAL_CORE 1
 // Histogram tile size in pixels on the small image.
 #define SELECTOR_BLOCK_SIZE 32
 // Selection grid step. Larger value => fewer selected pixels.

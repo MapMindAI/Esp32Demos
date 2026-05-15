@@ -3,6 +3,7 @@ SRCS
   "main.c"
   "ws_stream_service.c"
   "video_dev.c"
+  "pixel_selector.c"
   "wifi_station.c"
 
 INCLUDE_DIRS ".")
