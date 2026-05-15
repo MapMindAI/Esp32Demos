@@ -63,16 +63,69 @@ static void detect_corner_points(camera_context* cb_ctx, const uint8_t* y_plane,
     return;
   }
 
+  const int stride = 2;
+  // FAST-9 on a Bresenham circle of radius 3 (OpenCV-style logic).
+  static const int8_t circle_x[16] = {0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2, -3, -3, -3, -2, -1};
+  static const int8_t circle_y[16] = {-3, -3, -2, -1, 0, 1, 2, 3, 3, 3, 2, 1, 0, -1, -2, -3};
   uint32_t best_score[MAX_CORNER_POINTS] = {0};
-  const int border = 4;
+  const int border = 3 * stride;
   const int min_distance = 10;
-  const uint32_t score_threshold = 1200;
+  const int fast_threshold = 24;
+  const uint32_t score_threshold = 80;
 
-  for (size_t y = border; y + border < height; y += 2) {
-    for (size_t x = border; x + border < width; x += 2) {
-      int gx = (int)y_plane[y * width + (x + 1)] - (int)y_plane[y * width + (x - 1)];
-      int gy = (int)y_plane[(y + 1) * width + x] - (int)y_plane[(y - 1) * width + x];
-      uint32_t score = (uint32_t)(gx * gx + gy * gy);
+  for (size_t y = border; y + border < height; y += stride) {
+    for (size_t x = border; x + border < width; x += stride) {
+      const int p = (int)y_plane[y * width + x];
+
+      int diff[16];
+      int is_brighter[16];
+      int is_darker[16];
+      for (int i = 0; i < 16; ++i) {
+        int v = (int)y_plane[(y + circle_y[i] * stride) * width + (x + circle_x[i] * stride)];
+        diff[i] = v - p;
+        is_brighter[i] = (diff[i] > fast_threshold) ? 1 : 0;
+        is_darker[i] = (diff[i] < -fast_threshold) ? 1 : 0;
+      }
+
+      bool is_corner = false;
+      int best_arc_score = 0;
+      for (int start = 0; start < 16 && !is_corner; ++start) {
+        int bright_run = 0;
+        int dark_run = 0;
+        int bright_score = 0;
+        int dark_score = 0;
+        for (int k = 0; k < 9; ++k) {
+          int idx = (start + k) & 15;
+          if (is_brighter[idx]) {
+            bright_run++;
+            bright_score += diff[idx] - fast_threshold;
+          } else {
+            bright_run = 0;
+            bright_score = 0;
+          }
+          if (is_darker[idx]) {
+            dark_run++;
+            dark_score += (-diff[idx]) - fast_threshold;
+          } else {
+            dark_run = 0;
+            dark_score = 0;
+          }
+          if (bright_run >= 9 || dark_run >= 9) {
+            is_corner = true;
+            if (bright_score > best_arc_score) {
+              best_arc_score = bright_score;
+            }
+            if (dark_score > best_arc_score) {
+              best_arc_score = dark_score;
+            }
+          }
+        }
+      }
+
+      if (!is_corner) {
+        continue;
+      }
+      uint32_t score = (uint32_t)best_arc_score;
       if (score < score_threshold) {
         continue;
       }
@@ -453,15 +506,19 @@ frame_buffer_t* video_fb_get(camera_context* cb_ctx) {
   cb_ctx->raw_fb.len = cap_buf.bytesused;
   cb_ctx->raw_fb.width = cb_ctx->cap_width;
   cb_ctx->raw_fb.height = cb_ctx->cap_height;
+  int64_t corner_t0_us = esp_timer_get_time();
   detect_corner_points(cb_ctx, cb_ctx->raw_fb.buf, cb_ctx->raw_fb.width, cb_ctx->raw_fb.height);
+  int64_t corner_t1_us = esp_timer_get_time();
+  int32_t corner_cost_us = (int32_t)(corner_t1_us - corner_t0_us);
   frame_seq++;
   cb_ctx->raw_fb.frame_id = frame_seq;
   if ((frame_seq % 30) == 0) {
-    ESP_LOGI(TAG, "raw frame: %ux%u bytes=%u corners=%u",
+    ESP_LOGI(TAG, "raw frame: %ux%u bytes=%u corners=%u corner_time_us=%" PRId32,
              (unsigned)cb_ctx->raw_fb.width,
              (unsigned)cb_ctx->raw_fb.height,
              (unsigned)cb_ctx->raw_fb.len,
-             (unsigned)cb_ctx->corners_num);
+             (unsigned)cb_ctx->corners_num,
+             corner_cost_us);
     for (size_t i = 0; i < cb_ctx->corners_num && i < 8; ++i) {
       ESP_LOGI(TAG, "corner[%u] x=%u y=%u score=%" PRIu32,
                (unsigned)i,

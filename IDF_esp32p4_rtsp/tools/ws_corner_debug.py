@@ -6,6 +6,7 @@ import time
 import cv2
 import numpy as np
 from websocket import create_connection
+from websocket import WebSocketTimeoutException
 
 MAGIC = 0x5753494D
 VERSION = 1
@@ -58,15 +59,19 @@ def parse_packet(payload):
 def main():
     parser = argparse.ArgumentParser(description="ESP32P4 WebSocket JPEG + corner debug viewer")
     parser.add_argument("--ws-url", required=True, help="ws://<board-ip>:8080/ws")
+    parser.add_argument("--timeout-sec", type=float, default=30.0, help="WebSocket recv timeout in seconds")
     args = parser.parse_args()
 
     ws = create_connection(args.ws_url, timeout=5)
-    ws.settimeout(3)
+    ws.settimeout(args.timeout_sec)
 
     try:
         while True:
             t0 = time.time()
-            payload = ws.recv()
+            try:
+                payload = ws.recv()
+            except WebSocketTimeoutException:
+                continue
             if not isinstance(payload, (bytes, bytearray)):
                 continue
 
