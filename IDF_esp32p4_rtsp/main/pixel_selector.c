@@ -63,7 +63,11 @@ typedef struct {
   volatile bool started;
   bool stop;
 
-  const uint8_t* small_img;
+  const uint8_t* raw_img;
+  uint32_t cap_pixfmt;
+  int src_w;
+  int src_h;
+  uint8_t* small_img;
   int qw;
   int qh;
   int yb_start;
@@ -210,6 +214,29 @@ static esp_err_t ensure_worker_threshold_buffers(pipeline_worker_t* w, int w32, 
   return ESP_OK;
 }
 
+static void convert_small_gray_region(pipeline_worker_t* w) {
+  const int scale = SELECTOR_SMALL_IMG_SCALE;
+  int conv_margin = w->blk + w->potential + 2;
+  int y0 = w->yb_start - conv_margin;
+  int y1 = w->yb_end + conv_margin;
+  if (y0 < 0) y0 = 0;
+  if (y1 > w->qh) y1 = w->qh;
+
+  for (int y = y0; y < y1; ++y) {
+    int sy = y * scale;
+    for (int x = 0; x < w->qw; ++x) {
+      int sx = x * scale;
+      uint32_t ssum = 0;
+      for (int by = 0; by < scale; ++by) {
+        for (int bx = 0; bx < scale; ++bx) {
+          ssum += raw_gray_at(w->raw_img, w->cap_pixfmt, sx + bx, sy + by, w->src_w, w->src_h);
+        }
+      }
+      w->small_img[y * w->qw + x] = (uint8_t)(ssum / (uint32_t)(scale * scale));
+    }
+  }
+}
+
 static void compute_threshold_map_region(pipeline_worker_t* w) {
   const uint8_t* small_img = w->small_img;
   const int qw = w->qw;
@@ -342,6 +369,7 @@ static void pipeline_worker_task(void* arg) {
       break;
     }
 
+    convert_small_gray_region(w);
     compute_threshold_map_region(w);
     w->out_count = select_points_region(w, w->out_points, MAX_CORNER_POINTS);
     if (w->caller_task) {
@@ -355,6 +383,7 @@ static size_t run_pipeline_inline(pipeline_worker_t* w, corner_point_t* out_poin
   if (ensure_worker_threshold_buffers(w, w->w32, w->h32) != ESP_OK) {
     return 0;
   }
+  convert_small_gray_region(w);
   compute_threshold_map_region(w);
   return select_points_region(w, out_points, max_points);
 }
@@ -393,21 +422,6 @@ int pixel_selector_run(const uint8_t* raw,
   }
   (void)pixel_selector_init();
 
-  const int scale = SELECTOR_SMALL_IMG_SCALE;
-  for (int y = 0; y < small_h; ++y) {
-    int sy = y * scale;
-    for (int x = 0; x < small_w; ++x) {
-      int sx = x * scale;
-      uint32_t ssum = 0;
-      for (int by = 0; by < scale; ++by) {
-        for (int bx = 0; bx < scale; ++bx) {
-          ssum += raw_gray_at(raw, cap_pixfmt, sx + bx, sy + by, src_w, src_h);
-        }
-      }
-      small_img[y * small_w + x] = (uint8_t)(ssum / (uint32_t)(scale * scale));
-    }
-  }
-
   const int blk = SELECTOR_BLOCK_SIZE;
   const int w32 = (small_w + blk - 1) / blk;
   const int h32 = (small_h + blk - 1) / blk;
@@ -437,6 +451,10 @@ int pixel_selector_run(const uint8_t* raw,
       TaskHandle_t caller = xTaskGetCurrentTaskHandle();
 
       top->caller_task = caller;
+      top->raw_img = raw;
+      top->cap_pixfmt = cap_pixfmt;
+      top->src_w = src_w;
+      top->src_h = src_h;
       top->small_img = small_img;
       top->qw = small_w;
       top->qh = small_h;
@@ -452,6 +470,10 @@ int pixel_selector_run(const uint8_t* raw,
       top->local_seed = seed;
 
       bot->caller_task = caller;
+      bot->raw_img = raw;
+      bot->cap_pixfmt = cap_pixfmt;
+      bot->src_w = src_w;
+      bot->src_h = src_h;
       bot->small_img = small_img;
       bot->qw = small_w;
       bot->qh = small_h;
@@ -494,6 +516,10 @@ int pixel_selector_run(const uint8_t* raw,
       return 0;
     }
   }
+  g_inline_worker->raw_img = raw;
+  g_inline_worker->cap_pixfmt = cap_pixfmt;
+  g_inline_worker->src_w = src_w;
+  g_inline_worker->src_h = src_h;
   g_inline_worker->small_img = small_img;
   g_inline_worker->qw = small_w;
   g_inline_worker->qh = small_h;

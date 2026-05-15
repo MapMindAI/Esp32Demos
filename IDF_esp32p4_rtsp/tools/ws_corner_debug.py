@@ -21,10 +21,10 @@ POINT_SIZE = struct.calcsize(POINT_FMT)
 def draw_overlay(img, frame_id, points, age_ms):
     for x, y, score in points:
         cv2.circle(img, (x, y), 4, (0, 255, 0), 1, cv2.LINE_AA)
-        cv2.putText(img, str(score), (x + 4, y - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 255, 255), 1, cv2.LINE_AA)
+        # cv2.putText(img, str(score), (x + 4, y - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 255, 255), 1, cv2.LINE_AA)
 
     status = f"frame={frame_id} selected={len(points)} age_ms={age_ms}"
-    cv2.putText(img, status, (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
+    cv2.putText(img, status, (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1, cv2.LINE_AA)
 
 
 def parse_packet(payload):
