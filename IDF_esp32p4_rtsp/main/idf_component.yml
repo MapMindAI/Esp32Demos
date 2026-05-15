@@ -5,7 +5,6 @@ dependencies:
   # protocol_examples_common:
   #   path: /opt/esp/esp-idf/examples/common_components/protocol_examples_common
   espressif/mdns: ^1.0.3
-  espressif/esp_media_protocols: ^0.5.0
   espressif/esp_hosted: '*'
   esp_wifi_remote:
     version: "0.15.0"

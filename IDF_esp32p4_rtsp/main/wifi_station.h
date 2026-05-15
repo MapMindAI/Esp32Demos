@@ -5,6 +5,6 @@
 #include "esp_system.h"
 #include "esp_wifi.h"
 
-#define EXAMPLE_MDNS_HOST_NAME "esp32p4-rtsp"
+#define EXAMPLE_MDNS_HOST_NAME "esp32p4-ws"
 
 void wifi_init_sta(void);

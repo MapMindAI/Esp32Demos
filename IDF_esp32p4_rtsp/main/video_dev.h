@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 #define CAM_DEV_PATH ESP_VIDEO_MIPI_CSI_DEVICE_NAME
-#define ENCODE_DEV_PATH ESP_VIDEO_H264_DEVICE_NAME
+#define ENCODE_DEV_PATH ESP_VIDEO_JPEG_DEVICE_NAME
 
 #define EXAMPLE_VIDEO_BUFFER_COUNT 2
 #define BUFFER_COUNT EXAMPLE_VIDEO_BUFFER_COUNT
@@ -17,13 +17,27 @@ typedef struct {
   size_t len;
   size_t width;
   size_t height;
+  uint32_t frame_id;
   struct timeval timestamp;
 } frame_buffer_t;
+
+typedef struct {
+  uint16_t x;
+  uint16_t y;
+  uint32_t score;
+} corner_point_t;
+
+#define MAX_CORNER_POINTS 64
 
 typedef struct {
   int cap_fd;
   uint32_t format;
   uint8_t* cap_buffer[BUFFER_COUNT];
+  size_t cap_width;
+  size_t cap_height;
+  frame_buffer_t raw_fb;
+  corner_point_t corners[MAX_CORNER_POINTS];
+  size_t corners_num;
   int m2m_fd;
   uint8_t* m2m_cap_buffer;
   frame_buffer_t fb;
@@ -34,6 +48,12 @@ int video_dev_init(camera_context* context);
 esp_err_t video_start(int width, int height, camera_context* cb_ctx);
 
 frame_buffer_t* video_fb_get(camera_context* cb_ctx);
+
+const frame_buffer_t* video_raw_fb_get(const camera_context* cb_ctx);
+
+const corner_point_t* video_corner_points_get(const camera_context* cb_ctx, size_t* count);
+
+uint32_t video_frame_id_get(const camera_context* cb_ctx);
 
 void video_after_take(const camera_context* cb_ctx);
 

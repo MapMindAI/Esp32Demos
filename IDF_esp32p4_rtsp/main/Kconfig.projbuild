@@ -1,4 +1,4 @@
-menu "Camera RTSP Configuration"
+menu "Camera WebSocket Configuration"
 
     config EXAMPLE_MIPI_CSI_SCCB_I2C_PORT
         int "MIPI CSI SCCB I2C Port Number"

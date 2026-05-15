@@ -1,26 +1,31 @@
-# esp32p4 h.264 rtsp Demo
+# esp32p4 websocket jpeg corner Demo
 
-```
+```bash
 source $IDF_PATH/export.sh
 ```
 
-```
+```bash
 idf.py build flash monitor
 ```
 
-receive the stream with :
+## Remote corner debug (WebSocket)
+
+1. Flash and run on board:
+```bash
+idf.py build flash monitor
 ```
-ffplay -fflags nobuffer -flags low_delay -analyzeduration 1000000 rtsp://192.168.19.80:8554
+
+2. On remote PC, install Python deps:
+```bash
+pip install opencv-python websocket-client numpy
 ```
+
+3. Run debug viewer from this repo:
+```bash
+python3 IDF_esp32p4_rtsp/tools/ws_corner_debug.py \
+  --ws-url ws://192.168.19.80:8080/ws
+```
+
+Press `q` to quit the viewer window.
 
 Using [ESP32-P4-Module Dev Board](https://www.waveshare.com/esp32-p4-module-dev-kit.htm?srsltid=AfmBOoqSfmLctnNxVbsyf52gsBkHxYxHHTrGT1l1HtxYNDqSV2z0tax8)
-
-
-
-# Sever with go2rtc
-
-
-```
-chmod +x go2rtc_linux_amd64
-./go2rtc_linux_amd64
-```
