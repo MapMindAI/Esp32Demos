@@ -11,7 +11,7 @@
 #define WS_SERVER_PORT 8080
 #define WS_URI "/ws"
 #define WS_PKT_MAGIC 0x5753494DU
-#define WS_PKT_VER 1U
+#define WS_PKT_VER 3U
 
 typedef struct __attribute__((packed)) {
   uint16_t x;
@@ -24,9 +24,9 @@ typedef struct __attribute__((packed)) {
   uint16_t version;
   uint16_t point_count;
   uint32_t frame_id;
-  uint16_t width;
-  uint16_t height;
-  uint32_t jpeg_size;
+  uint16_t small_width;
+  uint16_t small_height;
+  uint32_t small_size;
 } ws_frame_header_t;
 
 typedef struct {
@@ -69,16 +69,18 @@ static void ws_stream_task(void* arg) {
   while (s_ctx.client_fd >= 0 && s_ctx.server) {
     frame_buffer_t* enc = video_fb_get(s_ctx.camera);
     const frame_buffer_t* raw = video_raw_fb_get(s_ctx.camera);
+    size_t small_w = 0, small_h = 0, small_len = 0;
+    const uint8_t* small_img = video_quarter_image_get(s_ctx.camera, &small_w, &small_h, &small_len);
     size_t pts_count = 0;
     const corner_point_t* pts = video_corner_points_get(s_ctx.camera, &pts_count);
-    if (!enc || !raw || !pts) {
+    if (!enc || !raw || !pts || !small_img) {
       continue;
     }
     if (pts_count > MAX_CORNER_POINTS) {
       pts_count = MAX_CORNER_POINTS;
     }
 
-    size_t payload_len = sizeof(ws_frame_header_t) + pts_count * sizeof(ws_point_t) + enc->len;
+    size_t payload_len = sizeof(ws_frame_header_t) + pts_count * sizeof(ws_point_t) + small_len;
     uint8_t* payload = (uint8_t*)malloc(payload_len);
     if (!payload) {
       video_after_take(s_ctx.camera);
@@ -91,13 +93,13 @@ static void ws_stream_task(void* arg) {
         .version = WS_PKT_VER,
         .point_count = (uint16_t)pts_count,
         .frame_id = raw->frame_id,
-        .width = (uint16_t)raw->width,
-        .height = (uint16_t)raw->height,
-        .jpeg_size = (uint32_t)enc->len,
+        .small_width = (uint16_t)small_w,
+        .small_height = (uint16_t)small_h,
+        .small_size = (uint32_t)small_len,
     };
     memcpy(payload, &header, sizeof(header));
     memcpy(payload + sizeof(header), pts, pts_count * sizeof(ws_point_t));
-    memcpy(payload + sizeof(header) + pts_count * sizeof(ws_point_t), enc->buf, enc->len);
+    memcpy(payload + sizeof(header) + pts_count * sizeof(ws_point_t), small_img, small_len);
 
     httpd_ws_frame_t ws_pkt = {
         .final = true,

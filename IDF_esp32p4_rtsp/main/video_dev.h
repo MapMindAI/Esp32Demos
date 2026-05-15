@@ -27,17 +27,22 @@ typedef struct {
   uint32_t score;
 } corner_point_t;
 
-#define MAX_CORNER_POINTS 64
+#define MAX_CORNER_POINTS 1024
 
 typedef struct {
   int cap_fd;
   uint32_t format;
+  uint32_t cap_pixfmt;
   uint8_t* cap_buffer[BUFFER_COUNT];
   size_t cap_width;
   size_t cap_height;
   frame_buffer_t raw_fb;
   corner_point_t corners[MAX_CORNER_POINTS];
   size_t corners_num;
+  uint8_t* quarter_img;
+  size_t quarter_width;
+  size_t quarter_height;
+  size_t quarter_len;
   int m2m_fd;
   uint8_t* m2m_cap_buffer;
   frame_buffer_t fb;
@@ -52,6 +57,7 @@ frame_buffer_t* video_fb_get(camera_context* cb_ctx);
 const frame_buffer_t* video_raw_fb_get(const camera_context* cb_ctx);
 
 const corner_point_t* video_corner_points_get(const camera_context* cb_ctx, size_t* count);
+const uint8_t* video_quarter_image_get(const camera_context* cb_ctx, size_t* width, size_t* height, size_t* len);
 
 uint32_t video_frame_id_get(const camera_context* cb_ctx);
 
