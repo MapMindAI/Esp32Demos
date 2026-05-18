@@ -39,7 +39,11 @@ void app_main() {
   net_connect();
 
   ESP_LOGI(TAG, "[ 1 ] Initialize av stream");
-  video_dev_init(&g_camera_context);
+  esp_err_t ret = video_dev_init(&g_camera_context);
+  if (ret != ESP_OK) {
+    ESP_LOGE(TAG, "video_dev_init failed: %s", esp_err_to_name(ret));
+    return;
+  }
 
   ESP_LOGI(TAG, "[ 2 ] Start websocket stream service");
   ESP_ERROR_CHECK(ws_stream_service_start(&g_camera_context));

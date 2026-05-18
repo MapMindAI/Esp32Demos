@@ -2,11 +2,17 @@
 #define VIDEO_DEV_H
 
 #include <esp_cam_sensor_types.h>
+#include <esp_err.h>
 #include <linux/videodev2.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
+#if CONFIG_ESP_VIDEO_ENABLE_USB_UVC_VIDEO_DEVICE
+#define CAM_DEV_PATH ESP_VIDEO_USB_UVC_DEVICE_NAME(0)
+#else
 #define CAM_DEV_PATH ESP_VIDEO_MIPI_CSI_DEVICE_NAME
+#endif
 #define ENCODE_DEV_PATH ESP_VIDEO_JPEG_DEVICE_NAME
 
 #define EXAMPLE_VIDEO_BUFFER_COUNT 2
@@ -43,12 +49,20 @@ typedef struct {
   size_t quarter_width;
   size_t quarter_height;
   size_t quarter_len;
+  bool direct_jpeg;
+  void* jpeg_dec;
+  uint8_t* jpeg_in_buf;
+  size_t jpeg_in_buf_size;
+  uint8_t* jpeg_gray_buf;
+  size_t jpeg_gray_buf_size;
+  size_t jpeg_gray_width;
+  size_t jpeg_gray_height;
   int m2m_fd;
   uint8_t* m2m_cap_buffer;
   frame_buffer_t fb;
 } camera_context;
 
-int video_dev_init(camera_context* context);
+esp_err_t video_dev_init(camera_context* context);
 
 esp_err_t video_start(int width, int height, camera_context* cb_ctx);
 

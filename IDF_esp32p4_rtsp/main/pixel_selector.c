@@ -38,8 +38,20 @@ static inline uint8_t raw_gray_at(const uint8_t* raw, uint32_t cap_pixfmt, int x
     case V4L2_PIX_FMT_GREY:
       return raw[y * w + x];
     case V4L2_PIX_FMT_YUV420:
+    case V4L2_PIX_FMT_NV12:
+    case V4L2_PIX_FMT_NV21:
     case V4L2_PIX_FMT_YUV422P:
       return raw[y * w + x];
+    case V4L2_PIX_FMT_YUYV: {
+      int pair_x = x & ~1;
+      int idx = (y * w + pair_x) * 2 + (x & 1 ? 2 : 0);
+      return raw[idx];
+    }
+    case V4L2_PIX_FMT_UYVY: {
+      int pair_x = x & ~1;
+      int idx = (y * w + pair_x) * 2 + (x & 1 ? 3 : 1);
+      return raw[idx];
+    }
     case V4L2_PIX_FMT_RGB24: {
       int idx = (y * w + x) * 3;
       return rgb_to_gray_u8(raw[idx + 0], raw[idx + 1], raw[idx + 2]);

@@ -40,6 +40,11 @@ typedef struct {
 static const char* TAG = "WS_STREAM";
 static ws_service_ctx_t s_ctx;
 
+#if CONFIG_ESP_VIDEO_ENABLE_USB_UVC_VIDEO_DEVICE
+#define CAM_WIDTH 640
+#define CAM_HEIGHT 480
+#else
+
 #ifdef CONFIG_CAMERA_OV5647_MIPI_RAW8_800X1280_50FPS
 #define CAM_WIDTH 800
 #define CAM_HEIGHT 1280
@@ -62,6 +67,8 @@ static ws_service_ctx_t s_ctx;
     defined(CONFIG_CAMERA_OV5647_MIPI_RAW10_1920x1080_30FPS)
 #define CAM_WIDTH 1920
 #define CAM_HEIGHT 1080
+#endif
+
 #endif
 
 static void ws_stream_task(void* arg) {
@@ -133,7 +140,11 @@ static esp_err_t ws_handler(httpd_req_t* req) {
     ESP_LOGI(TAG, "ws client connected fd=%d", s_ctx.client_fd);
 
     if (!s_ctx.video_started) {
-      ESP_ERROR_CHECK(video_start(CAM_WIDTH, CAM_HEIGHT, s_ctx.camera));
+      esp_err_t ret = video_start(CAM_WIDTH, CAM_HEIGHT, s_ctx.camera);
+      if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "video_start failed: %s", esp_err_to_name(ret));
+        return ret;
+      }
       s_ctx.video_started = true;
     }
     if (!s_ctx.stream_task) {

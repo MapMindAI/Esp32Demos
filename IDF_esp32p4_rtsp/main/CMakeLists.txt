@@ -6,4 +6,12 @@ SRCS
   "pixel_selector.c"
   "wifi_station.c"
 
-INCLUDE_DIRS ".")
+INCLUDE_DIRS "."
+REQUIRES
+  esp_driver_jpeg
+  nvs_flash
+  esp_wifi
+  esp_netif
+  esp_event
+  esp_http_server
+  mdns)
