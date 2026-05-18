@@ -5,6 +5,8 @@
  */
 
 #include "video_dev.h"
+#include "config.h"
+#include "pixel_selector.h"
 #include <fcntl.h>
 #include <string.h>
 #include <sys/errno.h>
@@ -20,8 +22,9 @@
 
 #include <esp_heap_caps.h>
 #include <esp_system.h>
+#include <inttypes.h>
 
-#define OUTPUT_FORMAT V4L2_PIX_FMT_H264
+#define OUTPUT_FORMAT V4L2_PIX_FMT_JPEG
 #define CAM_DEV_PATH ESP_VIDEO_MIPI_CSI_DEVICE_NAME
 #define DIS_VIDEO_CODEC_TIMESTAMP 1
 
@@ -32,6 +35,7 @@
 static const char* TAG = "camera_driver";
 
 static bool format_change = true;
+static uint32_t frame_seq;
 
 static const esp_video_init_csi_config_t csi_config[] = {
     {
@@ -54,6 +58,24 @@ static const esp_video_init_csi_config_t csi_config[] = {
 static const esp_video_init_config_t cam_config = {
     .csi = csi_config,
 };
+
+static void run_pixel_selector_quarter(camera_context* cb_ctx, const uint8_t* y_plane, size_t width, size_t height) {
+  cb_ctx->corners_num = 0;
+  if (!y_plane || !cb_ctx->quarter_img || cb_ctx->quarter_width < 4 || cb_ctx->quarter_height < 4) {
+    return;
+  }
+
+  cb_ctx->corners_num = (size_t)pixel_selector_run(y_plane,
+                                                    (int)width,
+                                                    (int)height,
+                                                    cb_ctx->cap_pixfmt,
+                                                    cb_ctx->quarter_img,
+                                                    (int)cb_ctx->quarter_width,
+                                                    (int)cb_ctx->quarter_height,
+                                                    cb_ctx->corners,
+                                                    MAX_CORNER_POINTS,
+                                                    frame_seq);
+}
 
 static void print_video_device_info(const struct v4l2_capability* capability) {
   ESP_LOGI(TAG, "version: %d.%d.%d", (uint16_t)(capability->version >> 16), (uint8_t)(capability->version >> 8),
@@ -125,40 +147,42 @@ static esp_err_t init_codec_video(camera_context* context) {
   ESP_ERROR_CHECK(ioctl(fd, VIDIOC_QUERYCAP, &capability));
   print_video_device_info(&capability);
 
-  controls.ctrl_class = V4L2_CID_CODEC_CLASS;
-  controls.count = 1;
-  controls.controls = control;
-  control[0].id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD;
-  control[0].value = CONFIG_EXAMPLE_H264_I_PERIOD;
-  if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
-    ESP_LOGW(TAG, "failed to set H.264 intra frame period");
-  }
+  if (OUTPUT_FORMAT == V4L2_PIX_FMT_H264) {
+    controls.ctrl_class = V4L2_CID_CODEC_CLASS;
+    controls.count = 1;
+    controls.controls = control;
+    control[0].id = V4L2_CID_MPEG_VIDEO_H264_I_PERIOD;
+    control[0].value = CONFIG_EXAMPLE_H264_I_PERIOD;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
+      ESP_LOGW(TAG, "failed to set H.264 intra frame period");
+    }
 
-  controls.ctrl_class = V4L2_CID_CODEC_CLASS;
-  controls.count = 1;
-  controls.controls = control;
-  control[0].id = V4L2_CID_MPEG_VIDEO_BITRATE;
-  control[0].value = CONFIG_EXAMPLE_H264_BITRATE;
-  if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
-    ESP_LOGW(TAG, "failed to set H.264 bitrate");
-  }
+    controls.ctrl_class = V4L2_CID_CODEC_CLASS;
+    controls.count = 1;
+    controls.controls = control;
+    control[0].id = V4L2_CID_MPEG_VIDEO_BITRATE;
+    control[0].value = CONFIG_EXAMPLE_H264_BITRATE;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
+      ESP_LOGW(TAG, "failed to set H.264 bitrate");
+    }
 
-  controls.ctrl_class = V4L2_CID_CODEC_CLASS;
-  controls.count = 1;
-  controls.controls = control;
-  control[0].id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP;
-  control[0].value = CONFIG_EXAMPLE_H264_MIN_QP;
-  if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
-    ESP_LOGW(TAG, "failed to set H.264 minimum quality");
-  }
+    controls.ctrl_class = V4L2_CID_CODEC_CLASS;
+    controls.count = 1;
+    controls.controls = control;
+    control[0].id = V4L2_CID_MPEG_VIDEO_H264_MIN_QP;
+    control[0].value = CONFIG_EXAMPLE_H264_MIN_QP;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
+      ESP_LOGW(TAG, "failed to set H.264 minimum quality");
+    }
 
-  controls.ctrl_class = V4L2_CID_CODEC_CLASS;
-  controls.count = 1;
-  controls.controls = control;
-  control[0].id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP;
-  control[0].value = CONFIG_EXAMPLE_H264_MAX_QP;
-  if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
-    ESP_LOGW(TAG, "failed to set H.264 maximum quality");
+    controls.ctrl_class = V4L2_CID_CODEC_CLASS;
+    controls.count = 1;
+    controls.controls = control;
+    control[0].id = V4L2_CID_MPEG_VIDEO_H264_MAX_QP;
+    control[0].value = CONFIG_EXAMPLE_H264_MAX_QP;
+    if (ioctl(fd, VIDIOC_S_EXT_CTRLS, &controls) != 0) {
+      ESP_LOGW(TAG, "failed to set H.264 maximum quality");
+    }
   }
 
   // E (8324) h.264_video: id=9909ca is not supported
@@ -201,6 +225,7 @@ esp_err_t video_start(int width, int height, camera_context* cb_ctx) {
 
   ESP_LOGW(TAG, "video start %dx%d", width, height);
 
+  // TODO: use V4L2_PIX_FMT_YUV422P by default
   if (cb_ctx->format == V4L2_PIX_FMT_JPEG) {
     int fmt_index = 0;
     const uint32_t jpeg_input_formats[] = {V4L2_PIX_FMT_RGB565, V4L2_PIX_FMT_YUV422P, V4L2_PIX_FMT_RGB24,
@@ -243,6 +268,23 @@ esp_err_t video_start(int width, int height, camera_context* cb_ctx) {
   format.fmt.pix.height = height;
   format.fmt.pix.pixelformat = capture_fmt;
   ESP_ERROR_CHECK(ioctl(cb_ctx->cap_fd, VIDIOC_S_FMT, &format));
+  cb_ctx->cap_width = format.fmt.pix.width;
+  cb_ctx->cap_height = format.fmt.pix.height;
+  cb_ctx->cap_pixfmt = capture_fmt;
+  cb_ctx->quarter_width = cb_ctx->cap_width / SELECTOR_SMALL_IMG_SCALE;
+  cb_ctx->quarter_height = cb_ctx->cap_height / SELECTOR_SMALL_IMG_SCALE;
+  if (cb_ctx->quarter_width == 0) cb_ctx->quarter_width = 1;
+  if (cb_ctx->quarter_height == 0) cb_ctx->quarter_height = 1;
+  cb_ctx->quarter_len = cb_ctx->quarter_width * cb_ctx->quarter_height;
+  if (cb_ctx->quarter_img) {
+    free(cb_ctx->quarter_img);
+    cb_ctx->quarter_img = NULL;
+  }
+  cb_ctx->quarter_img = (uint8_t*)heap_caps_malloc(cb_ctx->quarter_len, MALLOC_CAP_8BIT);
+  if (!cb_ctx->quarter_img) {
+    ESP_LOGE(TAG, "alloc quarter image failed");
+    return ESP_ERR_NO_MEM;
+  }
 
   memset(&req, 0, sizeof(req));
   req.count = BUFFER_COUNT;
@@ -314,18 +356,18 @@ esp_err_t video_start(int width, int height, camera_context* cb_ctx) {
   type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   ESP_ERROR_CHECK(ioctl(cb_ctx->cap_fd, VIDIOC_STREAMON, &type));
 
-  struct v4l2_ext_controls controls;
-  struct v4l2_ext_control control[1];
-  controls.ctrl_class = V4L2_CTRL_CLASS_MPEG;  // 使用 MPEG 控制类
-  controls.count = 1;
-  controls.controls = control;
-
-  control[0].id = V4L2_CID_MPEG_VIDEO_BITRATE;
-
-  if (ioctl(cb_ctx->m2m_fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
-    ESP_LOGI(TAG, "Current H.264 bitrate: %d bps", control[0].value);
-  } else {
-    ESP_LOGW(TAG, "Failed to get H.264 bitrate. The control may not be supported by your device.");
+  if (OUTPUT_FORMAT == V4L2_PIX_FMT_H264) {
+    struct v4l2_ext_controls controls;
+    struct v4l2_ext_control control[1];
+    controls.ctrl_class = V4L2_CTRL_CLASS_MPEG;
+    controls.count = 1;
+    controls.controls = control;
+    control[0].id = V4L2_CID_MPEG_VIDEO_BITRATE;
+    if (ioctl(cb_ctx->m2m_fd, VIDIOC_G_EXT_CTRLS, &controls) == 0) {
+      ESP_LOGI(TAG, "Current H.264 bitrate: %d bps", control[0].value);
+    } else {
+      ESP_LOGW(TAG, "Failed to get H.264 bitrate. The control may not be supported by your device.");
+    }
   }
   return ESP_OK;
 }
@@ -341,6 +383,13 @@ void video_stop(camera_context* cb_ctx) {
   ioctl(cb_ctx->m2m_fd, VIDIOC_STREAMOFF, &type);
   type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
   ioctl(cb_ctx->m2m_fd, VIDIOC_STREAMOFF, &type);
+  if (cb_ctx->quarter_img) {
+    free(cb_ctx->quarter_img);
+    cb_ctx->quarter_img = NULL;
+  }
+  cb_ctx->quarter_width = 0;
+  cb_ctx->quarter_height = 0;
+  cb_ctx->quarter_len = 0;
 }
 
 
@@ -378,6 +427,34 @@ frame_buffer_t* video_fb_get(camera_context* cb_ctx) {
   m2m_out_buf.length = cap_buf.bytesused;
   ESP_ERROR_CHECK(ioctl(cb_ctx->m2m_fd, VIDIOC_QBUF, &m2m_out_buf));
 
+  cb_ctx->raw_fb.buf = cb_ctx->cap_buffer[cap_buf.index];
+  cb_ctx->raw_fb.len = cap_buf.bytesused;
+  cb_ctx->raw_fb.width = cb_ctx->cap_width;
+  cb_ctx->raw_fb.height = cb_ctx->cap_height;
+  int64_t corner_t0_us = esp_timer_get_time();
+  run_pixel_selector_quarter(cb_ctx, cb_ctx->raw_fb.buf, cb_ctx->raw_fb.width, cb_ctx->raw_fb.height);
+  int64_t corner_t1_us = esp_timer_get_time();
+  int32_t corner_cost_us = (int32_t)(corner_t1_us - corner_t0_us);
+  frame_seq++;
+  cb_ctx->raw_fb.frame_id = frame_seq;
+  if ((frame_seq % SELECTOR_LOG_INTERVAL) == 0) {
+    ESP_LOGI(TAG, "raw frame: %ux%u bytes=%u selected=%u quarter=%ux%u selector_time_ms=%" PRId32,
+             (unsigned)cb_ctx->raw_fb.width,
+             (unsigned)cb_ctx->raw_fb.height,
+             (unsigned)cb_ctx->raw_fb.len,
+             (unsigned)cb_ctx->corners_num,
+             (unsigned)cb_ctx->quarter_width,
+             (unsigned)cb_ctx->quarter_height,
+             corner_cost_us / 1000);
+    for (size_t i = 0; i < cb_ctx->corners_num && i < 8; ++i) {
+      ESP_LOGI(TAG, "sel[%u] x=%u y=%u score=%" PRIu32,
+               (unsigned)i,
+               (unsigned)cb_ctx->corners[i].x,
+               (unsigned)cb_ctx->corners[i].y,
+               cb_ctx->corners[i].score);
+    }
+  }
+
   // dequeue the processed output from the M2M capture side
   // This waits until the M2M engine has produced output.
   memset(&m2m_cap_buf, 0, sizeof(m2m_cap_buf));
@@ -393,6 +470,7 @@ frame_buffer_t* video_fb_get(camera_context* cb_ctx) {
   // fill the returned frame descriptor
   cb_ctx->fb.buf = cb_ctx->m2m_cap_buffer;
   cb_ctx->fb.len = m2m_cap_buf.bytesused;
+  cb_ctx->fb.frame_id = cb_ctx->raw_fb.frame_id;
 
   if (format_change) {
     struct v4l2_format format = {0};
@@ -424,12 +502,50 @@ void video_after_take(const camera_context* cb_ctx) {
   ESP_ERROR_CHECK(ioctl(cb_ctx->m2m_fd, VIDIOC_QBUF, &m2m_cap_buf));
 }
 
+const frame_buffer_t* video_raw_fb_get(const camera_context* cb_ctx) {
+  return cb_ctx ? &cb_ctx->raw_fb : NULL;
+}
+
+const corner_point_t* video_corner_points_get(const camera_context* cb_ctx, size_t* count) {
+  if (!cb_ctx) {
+    if (count) {
+      *count = 0;
+    }
+    return NULL;
+  }
+  if (count) {
+    *count = cb_ctx->corners_num;
+  }
+  return cb_ctx->corners;
+}
+
+const uint8_t* video_quarter_image_get(const camera_context* cb_ctx, size_t* width, size_t* height, size_t* len) {
+  if (!cb_ctx) {
+    if (width) *width = 0;
+    if (height) *height = 0;
+    if (len) *len = 0;
+    return NULL;
+  }
+  if (width) *width = cb_ctx->quarter_width;
+  if (height) *height = cb_ctx->quarter_height;
+  if (len) *len = cb_ctx->quarter_len;
+  return cb_ctx->quarter_img;
+}
+
+uint32_t video_frame_id_get(const camera_context* cb_ctx) {
+  if (!cb_ctx) {
+    return 0;
+  }
+  return cb_ctx->raw_fb.frame_id;
+}
+
 int video_dev_init(camera_context* context) {
   assert(context);
 
   ESP_ERROR_CHECK(esp_video_init(&cam_config));
   ESP_ERROR_CHECK(init_capture_video(context));
   ESP_ERROR_CHECK(init_codec_video(context));
+  ESP_ERROR_CHECK(pixel_selector_init());
   return ESP_OK;
 }
 

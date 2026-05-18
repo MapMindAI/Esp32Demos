@@ -18,7 +18,6 @@
 #include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
-#include "rtsp_service.h"
 
 #include "lwip/err.h"
 #include "lwip/sys.h"
@@ -98,12 +97,9 @@ static void set_up_mdns() {
   netbiosns_set_name(EXAMPLE_MDNS_HOST_NAME);
   mdns_init();
   mdns_hostname_set(EXAMPLE_MDNS_HOST_NAME);
-  mdns_instance_name_set("esp32p4-rtsp");
-
-  // define the rtsp server txt record, offer the info about the stream
-  mdns_txt_item_t serviceTxtData[] = {{"stream", "h264"}};
-
-  ESP_ERROR_CHECK(mdns_service_add(EXAMPLE_MDNS_HOST_NAME, "_rtsp", "_tcp", RTSP_SERVER_PORT, serviceTxtData,
+  mdns_instance_name_set("esp32p4-ws");
+  mdns_txt_item_t serviceTxtData[] = {{"path", "/ws"}, {"stream", "jpeg+corners"}};
+  ESP_ERROR_CHECK(mdns_service_add(EXAMPLE_MDNS_HOST_NAME, "_http", "_tcp", 8080, serviceTxtData,
                                    sizeof(serviceTxtData) / sizeof(serviceTxtData[0])));
 }
 

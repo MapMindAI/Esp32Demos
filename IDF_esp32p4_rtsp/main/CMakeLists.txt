@@ -1,8 +1,9 @@
 idf_component_register(
 SRCS
   "main.c"
-  "rtsp_service.c"
+  "ws_stream_service.c"
   "video_dev.c"
+  "pixel_selector.c"
   "wifi_station.c"
 
 INCLUDE_DIRS ".")

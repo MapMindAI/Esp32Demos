@@ -1,4 +1,4 @@
-/* RTSP Example
+/* WebSocket Stream Example
 
    This example code is in the Public Domain (or CC0 licensed, at your option.)
 
@@ -15,13 +15,12 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "nvs_flash.h"
-#include "rtsp_service.h"
 #include "video_dev.h"
 #include "wifi_station.h"
+#include "ws_stream_service.h"
 
-#define TAG "ESP_RTSP_Demo"
+#define TAG "ESP_WS_Demo"
 
-static esp_rtsp_handle_t esp_rtsp;
 static camera_context g_camera_context;
 
 static void net_connect(void) {
@@ -42,6 +41,6 @@ void app_main() {
   ESP_LOGI(TAG, "[ 1 ] Initialize av stream");
   video_dev_init(&g_camera_context);
 
-  ESP_LOGI(TAG, "[ 2 ] Initialize rtsp_service_start");
-  esp_rtsp = rtsp_service_start(&g_camera_context);
+  ESP_LOGI(TAG, "[ 2 ] Start websocket stream service");
+  ESP_ERROR_CHECK(ws_stream_service_start(&g_camera_context));
 }
