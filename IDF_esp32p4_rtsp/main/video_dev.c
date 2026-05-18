@@ -225,6 +225,7 @@ esp_err_t video_start(int width, int height, camera_context* cb_ctx) {
 
   ESP_LOGW(TAG, "video start %dx%d", width, height);
 
+  // TODO: use V4L2_PIX_FMT_YUV422P by default
   if (cb_ctx->format == V4L2_PIX_FMT_JPEG) {
     int fmt_index = 0;
     const uint32_t jpeg_input_formats[] = {V4L2_PIX_FMT_RGB565, V4L2_PIX_FMT_YUV422P, V4L2_PIX_FMT_RGB24,
